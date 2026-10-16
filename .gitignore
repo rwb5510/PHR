@@ -1,11 +1,33 @@
+# Node / frontend
+node_modules/
 node_modules
 .vercel
 .tanstack
-.grok
-screenshots
-dist
+dist/
+.vite/
 *.log
 .env
 .env.*
+.env.local
 .project_id
 .node_modules.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.db
+*.sqlite3
+test_phase3.db
+
+# IDE / OS / internal
+.DS_Store
+.idea/
+.vscode/
+.grok/
+.tmp/
+screenshots
+
+# Docker
+pgdata/
