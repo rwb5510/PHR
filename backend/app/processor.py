@@ -10,6 +10,7 @@ from .models import (
     LabReport, LabComponent, Encounter, EncounterType, CanonicalAnalyte
 )
 from .extraction import extract_document_text, parse_lab_lines, find_collection_date
+from .ccda import is_clinical_document, parse_sections
 from .lab_matching import match_analyte, is_plain_number, compute_normalized, compute_abnormal_flag
 
 STORAGE_ROOT = os.getenv("STORAGE_ROOT", "/data/documents")
@@ -31,6 +32,32 @@ def process_job(db: Session, job_id: int) -> None:
         doc.page_count = pages
         doc.ocr_used = ocr
         db.commit()
+
+        # Phase 5: C-CDA detection
+        if doc.filename.lower().endswith(".xml") or (doc.mime_type or "").endswith("xml"):
+            if is_clinical_document(data):
+                analytes = db.query(CanonicalAnalyte).all()
+                proposals, patient_dob, _ = parse_sections(data, analytes)
+                profile = doc.profile
+                dob_mismatch = False
+                if patient_dob and profile.date_of_birth and patient_dob != profile.date_of_birth:
+                    dob_mismatch = True
+                for p in proposals:
+                    payload = p["payload"]
+                    if dob_mismatch:
+                        payload["dob_mismatch"] = f"Document DOB {patient_dob} != profile {profile.date_of_birth}"
+                    prop = Proposal(
+                        document_id=doc.id,
+                        profile_id=doc.profile_id,
+                        type=ProposalType.lab_line if p["type"] == "lab_line" else ProposalType.lab_report,
+                        status=ProposalStatus.pending,
+                        payload=json.dumps(payload),
+                        quote=p.get("quote"),
+                    )
+                    db.add(prop)
+                job.status = JobStatus.needs_review
+                db.commit()
+                return
 
         analytes = db.query(CanonicalAnalyte).all()
         lines = parse_lab_lines(text, analytes)

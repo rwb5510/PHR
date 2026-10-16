@@ -24,6 +24,8 @@ from .lab_matching import (
 from .seed import load_analytes
 from .extraction import MAX_UPLOAD_BYTES
 from .processor import process_job
+from .ccda import build_ccd
+from fastapi.responses import Response
 
 app = FastAPI(title="Household PHR Phase 4")
 
@@ -457,7 +459,29 @@ def create_lab_from_document(document_id: int, body: dict, db: Session = Depends
     db.refresh(report)
     return {"lab_report_id": report.id, "source_document_id": doc.id}
 
-@app.post("/documents/{document_id}/create-imaging")
+@app.get("/profiles/{profile_id}/export-ccd")
+def export_ccd(profile_id: int, db: Session = Depends(get_db)):
+    profile = db.query(Profile).filter(Profile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(404)
+    problems = []
+    allergies = []
+    medications = []
+    try:
+        from .models import Problem, Allergy, Medication
+        problems = db.query(Problem).filter(Problem.profile_id == profile_id).all()
+        allergies = db.query(Allergy).filter(Allergy.profile_id == profile_id).all()
+        medications = db.query(Medication).filter(Medication.profile_id == profile_id).all()
+    except ImportError:
+        pass
+    labs = (
+        db.query(LabComponent)
+        .join(LabReport)
+        .filter(LabReport.profile_id == profile_id, LabComponent.canonical_analyte_id.isnot(None))
+        .all()
+    )
+    xml = build_ccd(profile, problems, allergies, medications, labs)
+    return Response(content=xml, media_type="application/xml", headers={"Content-Disposition": "attachment; filename=ccd.xml"})
 def create_imaging_from_document(document_id: int, body: dict, db: Session = Depends(get_db)):
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc:
