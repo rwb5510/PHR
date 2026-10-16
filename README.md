@@ -21,7 +21,22 @@ python -m pytest tests/test_phase5.py -v
 
 On a profile page, use the Export CCD link. Author text states this is a self-generated personal record. Template OIDs are from the HL7 CDA R2.1 Implementation Guide (cited in `backend/app/ccda.py`).
 
-## Phase 6 — Optional model
+## Phase 7 — DICOM studies and viewer
+
+- Orthanc image pinned: `orthancteam/orthanc:24.10.2`. Ports 8042 and 4242 are not published.
+- Upload a DICOM file or zip. Bytes stream to Orthanc through the API. No second pixel copy on the document volume.
+- Non-DICOM files inside a zip are skipped and listed.
+- Postgres rows for study and series: UIDs, accession, modality, description, date, Orthanc ids.
+- Imaging encounter created for the study date and modality.
+- Imaging library shows studies and reports.
+- Link an existing document or imaging report to a study (optionally a series). Unlink supported.
+- Viewer route `/viewer/{StudyInstanceUID}` requires a session cookie (401 without). Proxies OHIF; browser never receives Orthanc address or password.
+- Series-specific link shows the series label.
+- Delete study from chart = remove from this profile. Orthanc study deleted only when no other profile references the UIDs. Imaging report is not deleted.
+
+## Phase 7 acceptance
+
+Tests in `backend/tests/test_phase7.py` generate a small synthetic DICOM and cover profile isolation, no local pixel copy, link survival, 401 without session, and unpublished Orthanc ports.
 
 - Settings: mode off (default), remote, or local. Base URL and model name. No API key field; key is `LLM_API_KEY` env var only.
 - Per-upload “Use model” defaults off and is disabled when mode is off.

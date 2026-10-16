@@ -15,6 +15,17 @@ services:
       timeout: 5s
       retries: 5
 
+  orthanc:
+    image: orthancteam/orthanc:24.10.2
+    environment:
+      ORTHANC__NAME: HouseholdPHR
+      ORTHANC__REGISTERED_USERS: '{"orthanc":"orthanc"}'
+      VERBOSE_ENABLED: "false"
+    # Ports 8042 and 4242 are NOT published. Internal only.
+    mem_limit: 2g
+    depends_on:
+      - db
+
   backend:
     build: ./backend
     ports:
@@ -22,6 +33,9 @@ services:
     environment:
       DATABASE_URL: postgresql://phr:phr@db:5432/phr
       STORAGE_ROOT: /data/documents
+      ORTHANC_URL: http://orthanc:8042
+      ORTHANC_USER: orthanc
+      ORTHANC_PASS: orthanc
     depends_on:
       db:
         condition: service_healthy

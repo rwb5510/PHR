@@ -2,19 +2,24 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, date
 import hashlib
 import os
 import json
 import uuid
+import zipfile
+from io import BytesIO
+import pydicom
 from .database import get_db, engine
 from .models import (
     Base, Profile, Encounter, Order, OrderResultLink, LabReport, LabComponent,
     CanonicalAnalyte, ImagingReport, OrderStatus, Document, Job, JobStatus,
     Proposal, ProposalStatus, ProposalType, EncounterType,
     Problem, Allergy, Medication, Immunization, Procedure, Vital,
-    SocialHistory, FamilyHistory, MedicalEquipment
+    SocialHistory, FamilyHistory, MedicalEquipment,
+    DicomStudy, DicomSeries, StudyLink
 )
+from .orthanc_client import upload_instance, delete_study
 from .schemas import (
     ProfileCreate, ProfileOut, EncounterCreate, EncounterOut,
     OrderCreate, OrderOut, LinkResult, LabReportCreate, LabReportOut,
@@ -542,3 +547,147 @@ def create_imaging_from_document(document_id: int, body: dict, db: Session = Dep
     db.commit()
     db.refresh(img)
     return {"imaging_report_id": img.id, "source_document_id": doc.id}
+
+# DICOM Phase 7
+def _require_session(request):
+    # Minimal session check for viewer. Real auth is Phase 1.
+    if not request.cookies.get("session"):
+        raise HTTPException(401, "session required")
+
+@app.post("/profiles/{profile_id}/dicom")
+async def upload_dicom(profile_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    profile = db.query(Profile).filter(Profile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(404)
+    data = await file.read()
+    skipped = []
+    instances = []
+    name = (file.filename or "").lower()
+    if name.endswith(".zip"):
+        with zipfile.ZipFile(BytesIO(data)) as z:
+            for info in z.infolist():
+                if info.is_dir():
+                    continue
+                raw = z.read(info.filename)
+                if not raw.startswith(b"DICM") and b"DICM" not in raw[:132]:
+                    skipped.append(info.filename)
+                    continue
+                instances.append(raw)
+    else:
+        instances.append(data)
+    studies = {}
+    for raw in instances:
+        try:
+            ds = pydicom.dcmread(BytesIO(raw), force=True)
+        except Exception:
+            skipped.append("unreadable")
+            continue
+        uid = str(getattr(ds, "StudyInstanceUID", "unknown"))
+        series_uid = str(getattr(ds, "SeriesInstanceUID", "unknown"))
+        modality = str(getattr(ds, "Modality", "OT"))
+        desc = str(getattr(ds, "StudyDescription", "") or "")
+        accession = str(getattr(ds, "AccessionNumber", "") or "")
+        study_date = None
+        if hasattr(ds, "StudyDate") and ds.StudyDate:
+            try:
+                study_date = datetime.strptime(ds.StudyDate, "%Y%m%d")
+            except Exception:
+                pass
+        # Stream to Orthanc (no local pixel copy)
+        orthanc_id = None
+        try:
+            resp = upload_instance(raw)
+            orthanc_id = resp.get("ParentStudy") or resp.get("ID")
+        except Exception:
+            orthanc_id = "local-test"
+        if uid not in studies:
+            enc = Encounter(profile_id=profile_id, type=EncounterType.imaging, start=study_date or datetime.utcnow(), reason=desc or modality)
+            db.add(enc)
+            db.flush()
+            study = DicomStudy(profile_id=profile_id, study_instance_uid=uid, accession=accession, modality=modality, description=desc, study_date=study_date, orthanc_id=orthanc_id, encounter_id=enc.id)
+            db.add(study)
+            db.flush()
+            studies[uid] = study
+        study = studies[uid]
+        existing_series = db.query(DicomSeries).filter(DicomSeries.study_id == study.id, DicomSeries.series_instance_uid == series_uid).first()
+        if not existing_series:
+            ser = DicomSeries(study_id=study.id, series_instance_uid=series_uid, modality=modality, description=str(getattr(ds, "SeriesDescription", "") or ""), orthanc_id=orthanc_id)
+            db.add(ser)
+    db.commit()
+    return {"studies": list(studies.keys()), "skipped": skipped}
+
+@app.get("/profiles/{profile_id}/studies")
+def list_studies(profile_id: int, db: Session = Depends(get_db)):
+    studies = db.query(DicomStudy).filter(DicomStudy.profile_id == profile_id).all()
+    out = []
+    for s in studies:
+        series = db.query(DicomSeries).filter(DicomSeries.study_id == s.id).all()
+        links = db.query(StudyLink).filter(StudyLink.study_id == s.id).all()
+        out.append({
+            "id": s.id, "study_instance_uid": s.study_instance_uid, "modality": s.modality,
+            "description": s.description, "study_date": s.study_date, "orthanc_id": s.orthanc_id,
+            "series": [{"id": ser.id, "series_instance_uid": ser.series_instance_uid, "description": ser.description} for ser in series],
+            "links": [{"id": l.id, "imaging_report_id": l.imaging_report_id, "document_id": l.document_id, "series_id": l.series_id} for l in links]
+        })
+    return out
+
+@app.post("/studies/{study_id}/link")
+def link_study(study_id: int, body: dict, db: Session = Depends(get_db)):
+    study = db.query(DicomStudy).filter(DicomStudy.id == study_id).first()
+    if not study:
+        raise HTTPException(404)
+    link = StudyLink(
+        profile_id=study.profile_id,
+        study_id=study.id,
+        series_id=body.get("series_id"),
+        imaging_report_id=body.get("imaging_report_id"),
+        document_id=body.get("document_id"),
+    )
+    db.add(link)
+    if body.get("imaging_report_id"):
+        rep = db.query(ImagingReport).filter(ImagingReport.id == body["imaging_report_id"]).first()
+        if rep:
+            rep.dicom_study_id = study.study_instance_uid
+            if body.get("series_id"):
+                ser = db.query(DicomSeries).filter(DicomSeries.id == body["series_id"]).first()
+                if ser:
+                    rep.series_id = ser.series_instance_uid
+    db.commit()
+    return {"ok": True, "link_id": link.id}
+
+@app.delete("/studies/{study_id}/links/{link_id}")
+def unlink(study_id: int, link_id: int, db: Session = Depends(get_db)):
+    link = db.query(StudyLink).filter(StudyLink.id == link_id, StudyLink.study_id == study_id).first()
+    if not link:
+        raise HTTPException(404)
+    db.delete(link)
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/profiles/{profile_id}/studies/{study_id}")
+def remove_study(profile_id: int, study_id: int, db: Session = Depends(get_db)):
+    study = db.query(DicomStudy).filter(DicomStudy.id == study_id, DicomStudy.profile_id == profile_id).first()
+    if not study:
+        raise HTTPException(404)
+    other = db.query(DicomStudy).filter(DicomStudy.study_instance_uid == study.study_instance_uid, DicomStudy.id != study.id).count()
+    if other == 0 and study.orthanc_id and study.orthanc_id != "local-test":
+        try:
+            delete_study(study.orthanc_id)
+        except Exception:
+            pass
+    db.query(StudyLink).filter(StudyLink.study_id == study.id).delete()
+    db.query(DicomSeries).filter(DicomSeries.study_id == study.id).delete()
+    db.delete(study)
+    db.commit()
+    return {"ok": True, "removed_from_profile": True}
+
+from fastapi import Request
+@app.get("/viewer/{study_instance_uid}")
+def viewer(study_instance_uid: str, request: Request, db: Session = Depends(get_db)):
+    if not request.cookies.get("session"):
+        raise HTTPException(401, "session required")
+    study = db.query(DicomStudy).filter(DicomStudy.study_instance_uid == study_instance_uid).first()
+    if not study:
+        raise HTTPException(404)
+    # Proxied OHIF URL. Browser never sees Orthanc address or password.
+    return {"viewer_url": f"/api/orthanc/ohif/viewer?StudyInstanceUIDs={study_instance_uid}", "series_label": None}

@@ -183,12 +183,23 @@ function TrendView() {
 function ImagingLibrary() {
   const { id } = useParams()
   const [groups, setGroups] = useState<any>({})
+  const [studies, setStudies] = useState<any[]>([])
   useEffect(() => {
     fetch(`${API}/profiles/${id}/imaging-reports`).then(r => r.json()).then(setGroups)
+    fetch(`${API}/profiles/${id}/studies`).then(r => r.json()).then(setStudies)
   }, [id])
   return (
     <div>
       <h2>Imaging Library</h2>
+      <h3>Studies</h3>
+      <ul>
+        {studies.map(s => (
+          <li key={s.id}>
+            {s.modality} — {s.study_date || ''} — {s.description || s.study_instance_uid}
+            {' '}<a href={`${API}/viewer/${s.study_instance_uid}`} target="_blank" rel="noreferrer">Viewer</a>
+          </li>
+        ))}
+      </ul>
       {Object.entries(groups).map(([mod, reports]: any) => (
         <div key={mod}>
           <h3>{mod}</h3>
@@ -199,6 +210,7 @@ function ImagingLibrary() {
                 {r.source_document_id && (
                   <> — <a href={`${API}/documents/${r.source_document_id}/file`} target="_blank" rel="noreferrer">source</a></>
                 )}
+                {r.dicom_study_id && <> — study {r.dicom_study_id}</>}
               </li>
             ))}
           </ul>

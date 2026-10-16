@@ -394,3 +394,37 @@ class MedicalEquipment(Base):
     source_document_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
+class DicomStudy(Base):
+    __tablename__ = "dicom_study"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    study_instance_uid = Column(String, nullable=False, index=True)
+    accession = Column(String, nullable=True)
+    modality = Column(String, nullable=True)
+    description = Column(String, nullable=True)
+    study_date = Column(DateTime, nullable=True)
+    orthanc_id = Column(String, nullable=True)
+    encounter_id = Column(Integer, ForeignKey("encounter.id"), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+class DicomSeries(Base):
+    __tablename__ = "dicom_series"
+    id = Column(Integer, primary_key=True)
+    study_id = Column(Integer, ForeignKey("dicom_study.id"), nullable=False, index=True)
+    series_instance_uid = Column(String, nullable=False)
+    modality = Column(String, nullable=True)
+    description = Column(String, nullable=True)
+    orthanc_id = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+class StudyLink(Base):
+    __tablename__ = "study_link"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    study_id = Column(Integer, ForeignKey("dicom_study.id"), nullable=False)
+    series_id = Column(Integer, ForeignKey("dicom_series.id"), nullable=True)
+    imaging_report_id = Column(Integer, ForeignKey("imaging_report.id"), nullable=True)
+    document_id = Column(Integer, ForeignKey("document.id"), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
