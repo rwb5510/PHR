@@ -12,6 +12,7 @@ from .models import (
 from .extraction import extract_document_text, parse_lab_lines, find_collection_date
 from .ccda import is_clinical_document, parse_sections
 from .lab_matching import match_analyte, is_plain_number, compute_normalized, compute_abnormal_flag
+from .model_client import call_model, llm_autofile_enabled, get_model_mode
 
 STORAGE_ROOT = os.getenv("STORAGE_ROOT", "/data/documents")
 
@@ -57,6 +58,37 @@ def process_job(db: Session, job_id: int) -> None:
                     )
                     db.add(prop)
                 job.status = JobStatus.needs_review
+                db.commit()
+                return
+
+        # Phase 6: optional model (never required; off leaves Phase 4/5 unchanged)
+        if getattr(job, "use_model", False) and get_model_mode() != "off":
+            try:
+                alias_list = []
+                for a in db.query(CanonicalAnalyte).all():
+                    alias_list.append(a.name)
+                    alias_list.extend([x.strip() for x in (a.aliases or "").split(",") if x.strip()])
+                result = call_model(doc.id, text, alias_list, True)
+                if result:
+                    for p in result.get("proposals", []):
+                        is_imp = p.get("is_impression") or p.get("type") == "impression"
+                        # Never auto-file impressions; only lab_line may auto-file if setting on
+                        prop = Proposal(
+                            document_id=doc.id,
+                            profile_id=doc.profile_id,
+                            type=ProposalType.lab_line if p.get("type") == "lab_line" else ProposalType.lab_report,
+                            status=ProposalStatus.pending,
+                            payload=json.dumps(p),
+                            quote=p.get("quote"),
+                            from_model=True,
+                        )
+                        db.add(prop)
+                    job.status = JobStatus.needs_review
+                    db.commit()
+                    return
+            except Exception as e:
+                job.status = JobStatus.failed
+                job.error_message = f"model_extraction_failed: {type(e).__name__}"
                 db.commit()
                 return
 

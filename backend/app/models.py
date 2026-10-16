@@ -220,6 +220,7 @@ class Job(Base):
     status = Column(SQLEnum(JobStatus), default=JobStatus.queued, nullable=False, index=True)
     error_message = Column(Text, nullable=True)
     retry_count = Column(Integer, default=0, nullable=False)
+    use_model = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -254,6 +255,7 @@ class Proposal(Base):
     status = Column(SQLEnum(ProposalStatus), default=ProposalStatus.pending, nullable=False)
     payload = Column(Text, nullable=False)
     quote = Column(Text, nullable=True)
+    from_model = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

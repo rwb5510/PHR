@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
@@ -27,7 +27,7 @@ from .seed import load_analytes
 from .extraction import MAX_UPLOAD_BYTES
 from .processor import process_job
 from .ccda import build_ccd
-from fastapi.responses import Response
+from .model_client import get_settings, update_settings, get_model_mode
 
 app = FastAPI(title="Household PHR Phase 4")
 
@@ -223,10 +223,27 @@ def list_imaging(profile_id: int, db: Session = Depends(get_db)):
     return groups
 
 # Documents
+@app.get("/settings")
+def get_settings_endpoint():
+    s = get_settings()
+    s["mode_off"] = s["mode"] == "off"
+    s["llm_autofile_warning"] = "Unsafe: model proposals may auto-file. Default off."
+    return s
+
+@app.post("/settings")
+def update_settings_endpoint(body: dict):
+    return update_settings(
+        mode=body.get("mode"),
+        base_url=body.get("base_url"),
+        model=body.get("model"),
+        llm_autofile=body.get("llm_autofile"),
+    )
+
 @app.post("/profiles/{profile_id}/documents")
 async def upload_document(
     profile_id: int,
     file: UploadFile = File(...),
+    use_model: bool = Form(False),
     db: Session = Depends(get_db)
 ):
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
@@ -259,7 +276,7 @@ async def upload_document(
     )
     db.add(doc)
     db.flush()
-    job = Job(document_id=doc.id, status=JobStatus.queued)
+    job = Job(document_id=doc.id, status=JobStatus.queued, use_model=use_model and get_model_mode() != "off")
     db.add(job)
     db.commit()
     db.refresh(doc)
@@ -338,6 +355,7 @@ def list_proposals(profile_id: int, db: Session = Depends(get_db)):
             "status": p.status.value,
             "payload": json.loads(p.payload),
             "quote": p.quote,
+            "from_model": p.from_model,
             "created_at": p.created_at,
         })
     return out

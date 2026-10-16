@@ -212,13 +212,19 @@ function Documents() {
   const { id } = useParams()
   const [docs, setDocs] = useState<any[]>([])
   const [msg, setMsg] = useState('')
+  const [useModel, setUseModel] = useState(false)
+  const [settings, setSettings] = useState<any>({ mode: 'off' })
   const load = () => fetch(`${API}/profiles/${id}/documents`).then(r => r.json()).then(setDocs)
-  useEffect(() => { load() }, [id])
+  useEffect(() => {
+    load()
+    fetch(`${API}/settings`).then(r => r.json()).then(setSettings)
+  }, [id])
   const upload = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
     const fd = new FormData()
     fd.append('file', f)
+    fd.append('use_model', String(useModel && settings.mode !== 'off'))
     const r = await fetch(`${API}/profiles/${id}/documents`, { method: 'POST', body: fd })
     const j = await r.json()
     if (j.duplicate) setMsg(j.warning)
@@ -237,6 +243,10 @@ function Documents() {
     <div>
       <h2>Documents</h2>
       <p>Max 50 MB per file. PDF, TIFF, JPG, PNG, TXT, MD.</p>
+      <label>
+        <input type="checkbox" checked={useModel} disabled={settings.mode === 'off'} onChange={e => setUseModel(e.target.checked)} />
+        Use model (default off; disabled when mode is off)
+      </label>
       <input type="file" onChange={upload} />
       {msg && <p style={{ color: 'orange' }}>{msg}</p>}
       <ul>
@@ -249,6 +259,34 @@ function Documents() {
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+function Settings() {
+  const [s, setS] = useState<any>({ mode: 'off', base_url: '', model: '', llm_autofile: false })
+  useEffect(() => { fetch(`${API}/settings`).then(r => r.json()).then(setS) }, [])
+  const save = async () => {
+    const r = await fetch(`${API}/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(s) })
+    setS(await r.json())
+  }
+  return (
+    <div>
+      <h2>Model settings</h2>
+      <p>Key is LLM_API_KEY env var only. No API key field.</p>
+      <label>Mode: <select value={s.mode} onChange={e => setS({ ...s, mode: e.target.value })}>
+        <option value="off">off</option>
+        <option value="remote">remote</option>
+        <option value="local">local</option>
+      </select></label><br />
+      <label>Base URL: <input value={s.base_url || ''} onChange={e => setS({ ...s, base_url: e.target.value })} /></label><br />
+      <label>Model: <input value={s.model || ''} onChange={e => setS({ ...s, model: e.target.value })} /></label><br />
+      <label>
+        <input type="checkbox" checked={!!s.llm_autofile} onChange={e => setS({ ...s, llm_autofile: e.target.checked })} />
+        llm_autofile (unsafe — default off)
+      </label><br />
+      <button onClick={save}>Save</button>
+      <p>{s.llm_autofile_warning}</p>
     </div>
   )
 }
@@ -287,7 +325,7 @@ export default function App() {
   return (
     <div style={{ fontFamily: 'sans-serif', maxWidth: 900, margin: '0 auto', padding: 16 }}>
       <header>
-        <Link to="/">Household PHR</Link>
+        <Link to="/">Household PHR</Link> | <Link to="/settings">Settings</Link>
       </header>
       <Routes>
         <Route path="/" element={<Profiles />} />
@@ -300,6 +338,7 @@ export default function App() {
         <Route path="/profile/:id/imaging" element={<ImagingLibrary />} />
         <Route path="/profile/:id/documents" element={<Documents />} />
         <Route path="/profile/:id/inbox" element={<Inbox />} />
+        <Route path="/settings" element={<Settings />} />
       </Routes>
       <Disclaimer />
     </div>

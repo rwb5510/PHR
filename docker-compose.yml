@@ -51,3 +51,15 @@ services:
 volumes:
   pgdata:
   documents:
+
+# Optional profile. Do not run on the 8 GB box together with Orthanc.
+# Start with: docker compose --profile local-llm up
+profiles:
+  local-llm:
+    services:
+      ollama:
+        image: ollama/ollama:0.3.12
+        profiles: ["local-llm"]
+        environment:
+          - OLLAMA_HOST=0.0.0.0
+        # Not published. Internal only.

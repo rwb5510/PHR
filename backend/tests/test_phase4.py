@@ -39,13 +39,10 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def clean_db():
+    Base.metadata.drop_all(bind=test_engine)
+    Base.metadata.create_all(bind=test_engine)
     db = TestingSessionLocal()
-    for table in reversed(Base.metadata.sorted_tables):
-        db.execute(table.delete())
-    db.commit()
-    db.close()
     from app.seed import load_analytes
-    db = TestingSessionLocal()
     load_analytes(db)
     db.close()
     shutil.rmtree("/tmp/phr_docs_test", ignore_errors=True)
