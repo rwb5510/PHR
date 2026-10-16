@@ -11,7 +11,9 @@ from .database import get_db, engine
 from .models import (
     Base, Profile, Encounter, Order, OrderResultLink, LabReport, LabComponent,
     CanonicalAnalyte, ImagingReport, OrderStatus, Document, Job, JobStatus,
-    Proposal, ProposalStatus, ProposalType, EncounterType
+    Proposal, ProposalStatus, ProposalType, EncounterType,
+    Problem, Allergy, Medication, Immunization, Procedure, Vital,
+    SocialHistory, FamilyHistory, MedicalEquipment
 )
 from .schemas import (
     ProfileCreate, ProfileOut, EncounterCreate, EncounterOut,
@@ -392,6 +394,24 @@ def accept_proposal(proposal_id: int, db: Session = Depends(get_db)):
             normalized_unit=norm_unit,
         )
         db.add(comp)
+    elif prop.type == ProposalType.problem:
+        db.add(Problem(profile_id=prop.profile_id, display_name=payload.get("display_name", ""), source_document_id=prop.document_id))
+    elif prop.type == ProposalType.allergy:
+        db.add(Allergy(profile_id=prop.profile_id, substance=payload.get("substance", ""), source_document_id=prop.document_id))
+    elif prop.type == ProposalType.medication:
+        db.add(Medication(profile_id=prop.profile_id, name=payload.get("name", ""), source_document_id=prop.document_id))
+    elif prop.type == ProposalType.immunization:
+        db.add(Immunization(profile_id=prop.profile_id, vaccine_name=payload.get("vaccine_name", ""), source_document_id=prop.document_id))
+    elif prop.type == ProposalType.procedure:
+        db.add(Procedure(profile_id=prop.profile_id, name=payload.get("name", ""), source_document_id=prop.document_id))
+    elif prop.type == ProposalType.vital:
+        db.add(Vital(profile_id=prop.profile_id, type=payload.get("type", "vital"), value=payload.get("value", ""), unit=payload.get("unit"), source_document_id=prop.document_id))
+    elif prop.type == ProposalType.social_history:
+        db.add(SocialHistory(profile_id=prop.profile_id, notes=payload.get("notes"), source_document_id=prop.document_id))
+    elif prop.type == ProposalType.family_history:
+        db.add(FamilyHistory(profile_id=prop.profile_id, relationship=payload.get("relationship", ""), condition=payload.get("condition", ""), source_document_id=prop.document_id))
+    elif prop.type == ProposalType.medical_equipment:
+        db.add(MedicalEquipment(profile_id=prop.profile_id, name=payload.get("name", ""), source_document_id=prop.document_id))
     prop.status = ProposalStatus.accepted
     db.commit()
     return {"ok": True, "status": "accepted"}
@@ -464,16 +484,9 @@ def export_ccd(profile_id: int, db: Session = Depends(get_db)):
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
     if not profile:
         raise HTTPException(404)
-    problems = []
-    allergies = []
-    medications = []
-    try:
-        from .models import Problem, Allergy, Medication
-        problems = db.query(Problem).filter(Problem.profile_id == profile_id).all()
-        allergies = db.query(Allergy).filter(Allergy.profile_id == profile_id).all()
-        medications = db.query(Medication).filter(Medication.profile_id == profile_id).all()
-    except ImportError:
-        pass
+    problems = db.query(Problem).filter(Problem.profile_id == profile_id).all()
+    allergies = db.query(Allergy).filter(Allergy.profile_id == profile_id).all()
+    medications = db.query(Medication).filter(Medication.profile_id == profile_id).all()
     labs = (
         db.query(LabComponent)
         .join(LabReport)

@@ -39,7 +39,8 @@ function ProfileHome() {
         <Link to={`/profile/${id}/trends/Sodium`}>Sodium Trend</Link> |{' '}
         <Link to={`/profile/${id}/imaging`}>Imaging</Link> |{' '}
         <Link to={`/profile/${id}/documents`}>Documents</Link> |{' '}
-        <Link to={`/profile/${id}/inbox`}>Review Inbox</Link>
+        <Link to={`/profile/${id}/inbox`}>Review Inbox</Link> |{' '}
+        <a href={`${API}/profiles/${id}/export-ccd`} target="_blank" rel="noreferrer">Export CCD</a>
       </nav>
     </div>
   )

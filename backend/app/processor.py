@@ -46,10 +46,11 @@ def process_job(db: Session, job_id: int) -> None:
                     payload = p["payload"]
                     if dob_mismatch:
                         payload["dob_mismatch"] = f"Document DOB {patient_dob} != profile {profile.date_of_birth}"
+                    ptype = ProposalType.lab_line if p["type"] == "lab_line" else getattr(ProposalType, p["type"], ProposalType.lab_report)
                     prop = Proposal(
                         document_id=doc.id,
                         profile_id=doc.profile_id,
-                        type=ProposalType.lab_line if p["type"] == "lab_line" else ProposalType.lab_report,
+                        type=ptype,
                         status=ProposalStatus.pending,
                         payload=json.dumps(payload),
                         quote=p.get("quote"),

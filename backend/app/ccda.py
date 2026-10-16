@@ -105,6 +105,67 @@ def parse_sections(xml_bytes: bytes, analytes: List[CanonicalAnalyte]) -> Tuple[
                     "quote": f"{display} {value_text} {unit}",
                 })
 
+    # Immunizations
+    for sec in root.findall(".//cda:section", NS):
+        tid = sec.find("cda:templateId", NS)
+        if tid is not None and tid.get("root") == IMMUN_SECTION_OID:
+            for sub in sec.findall(".//cda:substanceAdministration", NS):
+                code_el = sub.find(".//cda:manufacturedMaterial/cda:code", NS)
+                name = (code_el.get("displayName") if code_el is not None else "").strip()
+                if name:
+                    proposals.append({"type": "immunization", "payload": {"vaccine_name": name}, "quote": name})
+
+    # Procedures
+    for sec in root.findall(".//cda:section", NS):
+        tid = sec.find("cda:templateId", NS)
+        if tid is not None and tid.get("root") == PROC_SECTION_OID:
+            for proc in sec.findall(".//cda:procedure", NS):
+                code_el = proc.find("cda:code", NS)
+                name = (code_el.get("displayName") if code_el is not None else "").strip()
+                if name:
+                    proposals.append({"type": "procedure", "payload": {"name": name}, "quote": name})
+
+    # Vitals
+    for sec in root.findall(".//cda:section", NS):
+        tid = sec.find("cda:templateId", NS)
+        if tid is not None and tid.get("root") == VITAL_SECTION_OID:
+            for obs in sec.findall(".//cda:observation", NS):
+                code_el = obs.find("cda:code", NS)
+                vtype = (code_el.get("displayName") if code_el is not None else "vital").strip()
+                val = obs.find("cda:value", NS)
+                value = val.get("value") if val is not None else ""
+                unit = val.get("unit") if val is not None else ""
+                if value:
+                    proposals.append({"type": "vital", "payload": {"type": vtype, "value": value, "unit": unit}, "quote": f"{vtype} {value}"})
+
+    # Social history
+    for sec in root.findall(".//cda:section", NS):
+        tid = sec.find("cda:templateId", NS)
+        if tid is not None and tid.get("root") == SOCIAL_SECTION_OID:
+            text = "".join(sec.itertext()).strip()[:500]
+            if text:
+                proposals.append({"type": "social_history", "payload": {"notes": text}, "quote": text[:100]})
+
+    # Family history
+    for sec in root.findall(".//cda:section", NS):
+        tid = sec.find("cda:templateId", NS)
+        if tid is not None and tid.get("root") == FAMILY_SECTION_OID:
+            for obs in sec.findall(".//cda:observation", NS):
+                rel = obs.findtext(".//cda:subject/cda:relatedSubject/cda:code/@displayName", namespaces=NS) or "relative"
+                cond = (obs.find(".//cda:value", NS).get("displayName") if obs.find(".//cda:value", NS) is not None else "").strip()
+                if cond:
+                    proposals.append({"type": "family_history", "payload": {"relationship": rel, "condition": cond}, "quote": f"{rel}: {cond}"})
+
+    # Medical equipment
+    for sec in root.findall(".//cda:section", NS):
+        tid = sec.find("cda:templateId", NS)
+        if tid is not None and tid.get("root") == EQUIP_SECTION_OID:
+            for proc in sec.findall(".//cda:procedure", NS) + sec.findall(".//cda:observation", NS):
+                code_el = proc.find("cda:code", NS)
+                name = (code_el.get("displayName") if code_el is not None else "").strip()
+                if name:
+                    proposals.append({"type": "medical_equipment", "payload": {"name": name}, "quote": name})
+
     return proposals, patient_dob, ""
 
 def build_ccd(profile, problems, allergies, medications, lab_components) -> bytes:

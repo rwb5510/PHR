@@ -234,6 +234,16 @@ class ProposalType(str, enum.Enum):
     lab_line = "lab_line"
     lab_report = "lab_report"
     imaging_report = "imaging_report"
+    problem = "problem"
+    allergy = "allergy"
+    medication = "medication"
+    immunization = "immunization"
+    procedure = "procedure"
+    encounter = "encounter"
+    vital = "vital"
+    social_history = "social_history"
+    family_history = "family_history"
+    medical_equipment = "medical_equipment"
 
 class Proposal(Base):
     __tablename__ = "proposal"
@@ -248,3 +258,137 @@ class Proposal(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     document = relationship("Document")
+
+class Problem(Base):
+    __tablename__ = "problem"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    display_name = Column(String, nullable=False)
+    icd10 = Column(String, nullable=True)
+    status = Column(String, default="active")
+    onset = Column(Date, nullable=True)
+    resolved_date = Column(Date, nullable=True)
+    notes = Column(Text, nullable=True)
+    source_document_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_by = Column(Integer, ForeignKey("user.id"), nullable=True)
+
+class Allergy(Base):
+    __tablename__ = "allergy"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    substance = Column(String, nullable=False)
+    reaction = Column(String, nullable=True)
+    severity = Column(String, default="unknown")
+    status = Column(String, default="active")
+    onset = Column(Date, nullable=True)
+    notes = Column(Text, nullable=True)
+    source_document_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_by = Column(Integer, ForeignKey("user.id"), nullable=True)
+
+class Medication(Base):
+    __tablename__ = "medication"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    rxnorm = Column(String, nullable=True)
+    dose = Column(String, nullable=True)
+    dose_unit = Column(String, nullable=True)
+    route = Column(String, nullable=True)
+    frequency = Column(String, nullable=True)
+    status = Column(String, default="active")
+    start = Column(Date, nullable=True)
+    stop = Column(Date, nullable=True)
+    prescriber = Column(String, nullable=True)
+    indication = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    source_document_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_by = Column(Integer, ForeignKey("user.id"), nullable=True)
+
+class Immunization(Base):
+    __tablename__ = "immunization"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    vaccine_name = Column(String, nullable=False)
+    cvx = Column(String, nullable=True)
+    date = Column(Date, nullable=True)
+    lot = Column(String, nullable=True)
+    site = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    source_document_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    created_by = Column(Integer, ForeignKey("user.id"), nullable=True)
+
+class Procedure(Base):
+    __tablename__ = "procedure"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    date = Column(Date, nullable=True)
+    laterality = Column(String, nullable=True)
+    provider = Column(String, nullable=True)
+    facility = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    encounter_id = Column(Integer, ForeignKey("encounter.id"), nullable=True)
+    source_document_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    created_by = Column(Integer, ForeignKey("user.id"), nullable=True)
+
+class Vital(Base):
+    __tablename__ = "vital"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    type = Column(String, nullable=False)
+    value = Column(String, nullable=False)
+    unit = Column(String, nullable=True)
+    measured_at = Column(DateTime, nullable=True)
+    encounter_id = Column(Integer, ForeignKey("encounter.id"), nullable=True)
+    source_document_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+class SocialHistory(Base):
+    __tablename__ = "social_history"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    as_of = Column(Date, nullable=True)
+    smoking = Column(Text, nullable=True)
+    alcohol = Column(Text, nullable=True)
+    other_substances = Column(Text, nullable=True)
+    occupation = Column(Text, nullable=True)
+    living_situation = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
+    source_document_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+class FamilyHistory(Base):
+    __tablename__ = "family_history"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    relationship = Column(String, nullable=False)
+    condition = Column(String, nullable=False)
+    age_at_onset = Column(Integer, nullable=True)
+    deceased = Column(Boolean, default=False)
+    notes = Column(Text, nullable=True)
+    source_document_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+class MedicalEquipment(Base):
+    __tablename__ = "medical_equipment"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    kind = Column(String, nullable=True)
+    name = Column(String, nullable=False)
+    model = Column(String, nullable=True)
+    laterality = Column(String, nullable=True)
+    implanted_date = Column(Date, nullable=True)
+    facility = Column(String, nullable=True)
+    mri_safety = Column(String, nullable=True)
+    udi = Column(String, nullable=True)
+    source_document_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
