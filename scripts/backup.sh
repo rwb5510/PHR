@@ -11,3 +11,4 @@ docker compose exec -T backend tar czf - /data/documents > "$OUT/documents.tar.g
 echo "Copying Orthanc volume..."
 docker compose exec -T orthanc tar czf - /var/lib/orthanc/db > "$OUT/orthanc.tar.gz" || true
 echo "Backup written to $OUT"
+echo "Restore drill command: ./scripts/restore.sh $OUT"

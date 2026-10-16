@@ -17,7 +17,7 @@ from .models import (
     Proposal, ProposalStatus, ProposalType, EncounterType,
     Problem, Allergy, Medication, Immunization, Procedure, Vital,
     SocialHistory, FamilyHistory, MedicalEquipment,
-    DicomStudy, DicomSeries, StudyLink
+    DicomStudy, DicomSeries, StudyLink, Appointment
 )
 from .orthanc_client import upload_instance, delete_study
 from .schemas import (
@@ -691,3 +691,52 @@ def viewer(study_instance_uid: str, request: Request, db: Session = Depends(get_
         raise HTTPException(404)
     # Proxied OHIF URL. Browser never sees Orthanc address or password.
     return {"viewer_url": f"/api/orthanc/ohif/viewer?StudyInstanceUIDs={study_instance_uid}", "series_label": None}
+
+# Phase 8 dashboard
+@app.get("/profiles/{profile_id}/dashboard")
+def dashboard(profile_id: int, db: Session = Depends(get_db)):
+    profile = db.query(Profile).filter(Profile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(404)
+    problems = db.query(Problem).filter(Problem.profile_id == profile_id, Problem.status == "active").limit(5).all()
+    allergies = db.query(Allergy).filter(Allergy.profile_id == profile_id, Allergy.status == "active").limit(5).all()
+    meds = db.query(Medication).filter(Medication.profile_id == profile_id, Medication.status == "active").limit(5).all()
+    next_appt = db.query(Appointment).filter(Appointment.profile_id == profile_id, Appointment.when >= datetime.utcnow()).order_by(Appointment.when).first()
+    encounters = db.query(Encounter).filter(Encounter.profile_id == profile_id).order_by(Encounter.start.desc()).limit(5).all()
+    flagged = (
+        db.query(LabComponent)
+        .join(LabReport)
+        .filter(LabReport.profile_id == profile_id, LabComponent.abnormal_flag.in_(["L", "H"]))
+        .order_by(LabReport.collection_time.desc())
+        .limit(5)
+        .all()
+    )
+    imaging = db.query(ImagingReport).filter(ImagingReport.profile_id == profile_id).order_by(ImagingReport.performed_at.desc()).limit(10).all()
+    by_mod = {}
+    for r in imaging:
+        by_mod.setdefault(r.modality, []).append({"id": r.id, "performed_at": r.performed_at, "impression": r.impression, "dicom_study_id": r.dicom_study_id})
+    pending = db.query(Proposal).filter(Proposal.profile_id == profile_id, Proposal.status == ProposalStatus.pending).count()
+    return {
+        "demographics": {"legal_name": profile.legal_name, "preferred_name": profile.preferred_name, "date_of_birth": profile.date_of_birth, "sex": profile.sex},
+        "problems": [{"id": p.id, "display_name": p.display_name} for p in problems],
+        "allergies": [{"id": a.id, "substance": a.substance} for a in allergies],
+        "medications": [{"id": m.id, "name": m.name} for m in meds],
+        "next_appointment": {"when": next_appt.when, "provider": next_appt.provider, "reason": next_appt.reason} if next_appt else None,
+        "recent_encounters": [{"id": e.id, "type": e.type.value, "start": e.start, "reason": e.reason} for e in encounters],
+        "flagged_labs": [{"original_name": c.original_name, "value_text": c.value_text, "unit": c.unit_original, "ref_low": c.ref_low, "ref_high": c.ref_high, "flag": c.abnormal_flag.value, "analyte": c.canonical.name if c.canonical else None} for c in flagged],
+        "imaging_by_modality": by_mod,
+        "inbox_count": pending,
+    }
+
+@app.get("/profiles/{profile_id}/inbox-count")
+def inbox_count(profile_id: int, db: Session = Depends(get_db)):
+    n = db.query(Proposal).filter(Proposal.profile_id == profile_id, Proposal.status == ProposalStatus.pending).count()
+    return {"count": n}
+
+@app.post("/profiles/{profile_id}/appointments")
+def create_appointment(profile_id: int, body: dict, db: Session = Depends(get_db)):
+    appt = Appointment(profile_id=profile_id, when=datetime.fromisoformat(body["when"]), provider=body.get("provider"), place=body.get("place"), reason=body.get("reason"))
+    db.add(appt)
+    db.commit()
+    db.refresh(appt)
+    return {"id": appt.id, "when": appt.when}

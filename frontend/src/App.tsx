@@ -30,18 +30,68 @@ function Profiles() {
 
 function ProfileHome() {
   const { id } = useParams()
+  const [inbox, setInbox] = useState(0)
+  useEffect(() => {
+    fetch(`${API}/profiles/${id}/inbox-count`).then(r => r.json()).then(d => setInbox(d.count || 0))
+  }, [id])
   return (
     <div>
       <h1>Profile {id}</h1>
       <nav>
+        <Link to={`/profile/${id}/dashboard`}>Dashboard</Link> |{' '}
         <Link to={`/profile/${id}/encounters`}>Encounters</Link> |{' '}
         <Link to={`/profile/${id}/labs`}>Lab Reports</Link> |{' '}
         <Link to={`/profile/${id}/trends/Sodium`}>Sodium Trend</Link> |{' '}
         <Link to={`/profile/${id}/imaging`}>Imaging</Link> |{' '}
         <Link to={`/profile/${id}/documents`}>Documents</Link> |{' '}
-        <Link to={`/profile/${id}/inbox`}>Review Inbox</Link> |{' '}
+        <Link to={`/profile/${id}/inbox`}>Review Inbox {inbox > 0 && <span style={{ background: '#c00', color: '#fff', borderRadius: 8, padding: '0 6px', fontSize: 12 }}>{inbox}</span>}</Link> |{' '}
+        <Link to={`/profile/${id}/emergency`}>Emergency</Link> |{' '}
         <a href={`${API}/profiles/${id}/export-ccd`} target="_blank" rel="noreferrer">Export CCD</a>
       </nav>
+    </div>
+  )
+}
+
+function Dashboard() {
+  const { id } = useParams()
+  const [d, setD] = useState<any>(null)
+  useEffect(() => { fetch(`${API}/profiles/${id}/dashboard`).then(r => r.json()).then(setD) }, [id])
+  if (!d) return <div>Loading...</div>
+  const demo = d.demographics
+  return (
+    <div>
+      <h2>Dashboard</h2>
+      <p>{demo.legal_name} {demo.preferred_name ? `(${demo.preferred_name})` : ''} — DOB {demo.date_of_birth || '—'} — {demo.sex || ''}</p>
+      <h3><Link to={`/profile/${id}/problems`}>Active problems</Link></h3>
+      <ul>{d.problems.map((p: any) => <li key={p.id}>{p.display_name}</li>)}</ul>
+      <h3><Link to={`/profile/${id}/allergies`}>Allergies</Link></h3>
+      <ul>{d.allergies.map((a: any) => <li key={a.id}>{a.substance}</li>)}</ul>
+      <h3><Link to={`/profile/${id}/medications`}>Medications</Link></h3>
+      <ul>{d.medications.map((m: any) => <li key={m.id}>{m.name}</li>)}</ul>
+      {d.next_appointment && <p>Next appointment: {d.next_appointment.when} — {d.next_appointment.provider || ''} — {d.next_appointment.reason || ''}</p>}
+      <h3>Recent encounters</h3>
+      <ul>{d.recent_encounters.map((e: any) => <li key={e.id}><Link to={`/encounter/${e.id}`}>{e.type} — {e.start} — {e.reason || ''}</Link></li>)}</ul>
+      <h3>Flagged labs (L/H)</h3>
+      <ul>{d.flagged_labs.map((c: any, i: number) => <li key={i}><Link to={`/profile/${id}/trends/${c.analyte || 'Sodium'}`}>{c.original_name}: {c.value_text} {c.unit || ''} ({c.flag}) {c.ref_low != null ? `${c.ref_low}–${c.ref_high}` : ''}</Link></li>)}</ul>
+      <h3>Recent imaging</h3>
+      {Object.entries(d.imaging_by_modality || {}).map(([mod, reports]: any) => (
+        <div key={mod}>
+          <h4>{mod}</h4>
+          <ul>{reports.map((r: any) => <li key={r.id}><Link to={`/imaging-report/${r.id}`}>{r.performed_at} — {r.impression?.slice(0, 60) || ''}</Link> {r.dicom_study_id && <a href={`${API}/viewer/${r.dicom_study_id}`}>viewer</a>}</li>)}</ul>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function Emergency() {
+  const { id } = useParams()
+  return (
+    <div>
+      <h2>Emergency snapshot</h2>
+      <p>How to hand this to a clinician: give them this printout or the C-CDA download, not a login.</p>
+      <p><a href={`${API}/profiles/${id}/export-ccd`}>Download C-CDA</a></p>
+      <button onClick={() => window.print()}>Print</button>
     </div>
   )
 }
@@ -342,6 +392,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Profiles />} />
         <Route path="/profile/:id" element={<ProfileHome />} />
+        <Route path="/profile/:id/dashboard" element={<Dashboard />} />
+        <Route path="/profile/:id/emergency" element={<Emergency />} />
         <Route path="/profile/:id/encounters" element={<Encounters />} />
         <Route path="/encounter/:id" element={<EncounterDetail />} />
         <Route path="/profile/:id/labs" element={<LabReports />} />

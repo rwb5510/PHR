@@ -427,4 +427,16 @@ class StudyLink(Base):
     document_id = Column(Integer, ForeignKey("document.id"), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
+class Appointment(Base):
+    __tablename__ = "appointment"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    when = Column(DateTime, nullable=False)
+    provider = Column(String, nullable=True)
+    place = Column(String, nullable=True)
+    reason = Column(String, nullable=True)
+    status = Column(String, default="scheduled")
+    created_at = Column(DateTime, server_default=func.now())
+
+
 

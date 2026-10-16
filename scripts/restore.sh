@@ -1,5 +1,5 @@
 #!/bin/bash
-# Phase 8 restore drill
+# Phase 8 restore into a fresh Compose project
 set -e
 if [ -z "$1" ]; then echo "Usage: $0 <backup_dir>"; exit 1; fi
 DIR="$1"
