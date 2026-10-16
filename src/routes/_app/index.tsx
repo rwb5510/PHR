@@ -115,9 +115,7 @@ function Home() {
             ) : null}
           </dl>
           {active.notes ? <p className="mt-4 text-sm text-muted">{active.notes}</p> : null}
-          <p className="mt-4 text-sm text-muted">
-            Problems, medications, labs, and the rest of the chart come in later phases.
-          </p>
+          <p className="mt-4 text-sm text-muted">Use the sections above to add this person's history.</p>
           <div className="mt-5 flex flex-wrap gap-2">
             <button
               type="button"

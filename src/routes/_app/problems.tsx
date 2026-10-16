@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { LaterPhase } from "@/components/later-phase";
+import { ProblemsPage } from "@/components/chart-sections";
 
 export const Route = createFileRoute("/_app/problems")({
-  component: () => <LaterPhase title="Problems" />,
+  component: ProblemsPage,
 });

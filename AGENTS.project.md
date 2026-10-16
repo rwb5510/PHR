@@ -19,12 +19,12 @@ Use what is already here:
 
 ## Status
 
-Phase 1 is implemented: email, Google, and X sign-in; one household per account; add, edit, and switch people; the active person survives a refresh; later sections are placeholders. Do not redo Phase 1. Start at Phase 2 when asked.
+Phase 2 is implemented: providers, encounters, problems, allergies, medications, immunizations, procedures, family history, social history, vitals, implants, insurance, pharmacy, emergency contacts, appointments, and a printable emergency snapshot. Void hides a row. Do not redo Phase 1 or Phase 2. Start at Phase 3 when asked.
 
 Implement one phase per session. Do not start the next phase in the same session.
 
-1. Sign-in, household, profiles, shell. **Current.**
-2. Manual chart: providers, encounters, problems, allergies, medications, immunizations, procedures, family history, social history, vitals, implants, insurance, pharmacy, emergency contacts, appointments, printable emergency snapshot.
+1. Sign-in, household, profiles, shell. Done.
+2. Manual chart: providers, encounters, problems, allergies, medications, immunizations, procedures, family history, social history, vitals, implants, insurance, pharmacy, emergency contacts, appointments, printable emergency snapshot. **Current.**
 3. Orders, lab reports, canonical analytes, trends, imaging reports by modality.
 4. Document upload, text extraction, review inbox. OCR only if a pure-JS or already-installed path exists. Do not `apt` install Tesseract.
 5. C-CDA import and export.

@@ -13,13 +13,24 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAllergiesRouteImport } from './routes/_app/allergies'
+import { Route as AppAppointmentsRouteImport } from './routes/_app/appointments'
+import { Route as AppContactsRouteImport } from './routes/_app/contacts'
 import { Route as AppDocumentsRouteImport } from './routes/_app/documents'
 import { Route as AppEmergencyRouteImport } from './routes/_app/emergency'
+import { Route as AppEncountersRouteImport } from './routes/_app/encounters'
+import { Route as AppFamilyRouteImport } from './routes/_app/family'
 import { Route as AppImagingRouteImport } from './routes/_app/imaging'
+import { Route as AppImmunizationsRouteImport } from './routes/_app/immunizations'
+import { Route as AppImplantsRouteImport } from './routes/_app/implants'
+import { Route as AppInsuranceRouteImport } from './routes/_app/insurance'
 import { Route as AppLabsRouteImport } from './routes/_app/labs'
 import { Route as AppMedicationsRouteImport } from './routes/_app/medications'
+import { Route as AppPharmacyRouteImport } from './routes/_app/pharmacy'
 import { Route as AppProblemsRouteImport } from './routes/_app/problems'
+import { Route as AppProceduresRouteImport } from './routes/_app/procedures'
 import { Route as AppProvidersRouteImport } from './routes/_app/providers'
+import { Route as AppSocialRouteImport } from './routes/_app/social'
+import { Route as AppVitalsRouteImport } from './routes/_app/vitals'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const AppRoute = AppRouteImport.update({
@@ -41,6 +52,16 @@ const AppAllergiesRoute = AppAllergiesRouteImport.update({
   path: '/allergies',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAppointmentsRoute = AppAppointmentsRouteImport.update({
+  id: '/appointments',
+  path: '/appointments',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppContactsRoute = AppContactsRouteImport.update({
+  id: '/contacts',
+  path: '/contacts',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDocumentsRoute = AppDocumentsRouteImport.update({
   id: '/documents',
   path: '/documents',
@@ -51,9 +72,34 @@ const AppEmergencyRoute = AppEmergencyRouteImport.update({
   path: '/emergency',
   getParentRoute: () => AppRoute,
 } as any)
+const AppEncountersRoute = AppEncountersRouteImport.update({
+  id: '/encounters',
+  path: '/encounters',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFamilyRoute = AppFamilyRouteImport.update({
+  id: '/family',
+  path: '/family',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppImagingRoute = AppImagingRouteImport.update({
   id: '/imaging',
   path: '/imaging',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppImmunizationsRoute = AppImmunizationsRouteImport.update({
+  id: '/immunizations',
+  path: '/immunizations',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppImplantsRoute = AppImplantsRouteImport.update({
+  id: '/implants',
+  path: '/implants',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppInsuranceRoute = AppInsuranceRouteImport.update({
+  id: '/insurance',
+  path: '/insurance',
   getParentRoute: () => AppRoute,
 } as any)
 const AppLabsRoute = AppLabsRouteImport.update({
@@ -66,14 +112,34 @@ const AppMedicationsRoute = AppMedicationsRouteImport.update({
   path: '/medications',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPharmacyRoute = AppPharmacyRouteImport.update({
+  id: '/pharmacy',
+  path: '/pharmacy',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppProblemsRoute = AppProblemsRouteImport.update({
   id: '/problems',
   path: '/problems',
   getParentRoute: () => AppRoute,
 } as any)
+const AppProceduresRoute = AppProceduresRouteImport.update({
+  id: '/procedures',
+  path: '/procedures',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppProvidersRoute = AppProvidersRouteImport.update({
   id: '/providers',
   path: '/providers',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSocialRoute = AppSocialRouteImport.update({
+  id: '/social',
+  path: '/social',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppVitalsRoute = AppVitalsRouteImport.update({
+  id: '/vitals',
+  path: '/vitals',
   getParentRoute: () => AppRoute,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -86,25 +152,47 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/allergies': typeof AppAllergiesRoute
+  '/appointments': typeof AppAppointmentsRoute
+  '/contacts': typeof AppContactsRoute
   '/documents': typeof AppDocumentsRoute
   '/emergency': typeof AppEmergencyRoute
+  '/encounters': typeof AppEncountersRoute
+  '/family': typeof AppFamilyRoute
   '/imaging': typeof AppImagingRoute
+  '/immunizations': typeof AppImmunizationsRoute
+  '/implants': typeof AppImplantsRoute
+  '/insurance': typeof AppInsuranceRoute
   '/labs': typeof AppLabsRoute
   '/medications': typeof AppMedicationsRoute
+  '/pharmacy': typeof AppPharmacyRoute
   '/problems': typeof AppProblemsRoute
+  '/procedures': typeof AppProceduresRoute
   '/providers': typeof AppProvidersRoute
+  '/social': typeof AppSocialRoute
+  '/vitals': typeof AppVitalsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/allergies': typeof AppAllergiesRoute
+  '/appointments': typeof AppAppointmentsRoute
+  '/contacts': typeof AppContactsRoute
   '/documents': typeof AppDocumentsRoute
   '/emergency': typeof AppEmergencyRoute
+  '/encounters': typeof AppEncountersRoute
+  '/family': typeof AppFamilyRoute
   '/imaging': typeof AppImagingRoute
+  '/immunizations': typeof AppImmunizationsRoute
+  '/implants': typeof AppImplantsRoute
+  '/insurance': typeof AppInsuranceRoute
   '/labs': typeof AppLabsRoute
   '/medications': typeof AppMedicationsRoute
+  '/pharmacy': typeof AppPharmacyRoute
   '/problems': typeof AppProblemsRoute
+  '/procedures': typeof AppProceduresRoute
   '/providers': typeof AppProvidersRoute
+  '/social': typeof AppSocialRoute
+  '/vitals': typeof AppVitalsRoute
   '/': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
@@ -113,13 +201,24 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/_app/allergies': typeof AppAllergiesRoute
+  '/_app/appointments': typeof AppAppointmentsRoute
+  '/_app/contacts': typeof AppContactsRoute
   '/_app/documents': typeof AppDocumentsRoute
   '/_app/emergency': typeof AppEmergencyRoute
+  '/_app/encounters': typeof AppEncountersRoute
+  '/_app/family': typeof AppFamilyRoute
   '/_app/imaging': typeof AppImagingRoute
+  '/_app/immunizations': typeof AppImmunizationsRoute
+  '/_app/implants': typeof AppImplantsRoute
+  '/_app/insurance': typeof AppInsuranceRoute
   '/_app/labs': typeof AppLabsRoute
   '/_app/medications': typeof AppMedicationsRoute
+  '/_app/pharmacy': typeof AppPharmacyRoute
   '/_app/problems': typeof AppProblemsRoute
+  '/_app/procedures': typeof AppProceduresRoute
   '/_app/providers': typeof AppProvidersRoute
+  '/_app/social': typeof AppSocialRoute
+  '/_app/vitals': typeof AppVitalsRoute
   '/_app/': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
@@ -129,25 +228,47 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/allergies'
+    | '/appointments'
+    | '/contacts'
     | '/documents'
     | '/emergency'
+    | '/encounters'
+    | '/family'
     | '/imaging'
+    | '/immunizations'
+    | '/implants'
+    | '/insurance'
     | '/labs'
     | '/medications'
+    | '/pharmacy'
     | '/problems'
+    | '/procedures'
     | '/providers'
+    | '/social'
+    | '/vitals'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
     | '/allergies'
+    | '/appointments'
+    | '/contacts'
     | '/documents'
     | '/emergency'
+    | '/encounters'
+    | '/family'
     | '/imaging'
+    | '/immunizations'
+    | '/implants'
+    | '/insurance'
     | '/labs'
     | '/medications'
+    | '/pharmacy'
     | '/problems'
+    | '/procedures'
     | '/providers'
+    | '/social'
+    | '/vitals'
     | '/'
     | '/api/auth/$'
   id:
@@ -155,13 +276,24 @@ export interface FileRouteTypes {
     | '/_app'
     | '/login'
     | '/_app/allergies'
+    | '/_app/appointments'
+    | '/_app/contacts'
     | '/_app/documents'
     | '/_app/emergency'
+    | '/_app/encounters'
+    | '/_app/family'
     | '/_app/imaging'
+    | '/_app/immunizations'
+    | '/_app/implants'
+    | '/_app/insurance'
     | '/_app/labs'
     | '/_app/medications'
+    | '/_app/pharmacy'
     | '/_app/problems'
+    | '/_app/procedures'
     | '/_app/providers'
+    | '/_app/social'
+    | '/_app/vitals'
     | '/_app/'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
@@ -202,6 +334,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAllergiesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/appointments': {
+      id: '/_app/appointments'
+      path: '/appointments'
+      fullPath: '/appointments'
+      preLoaderRoute: typeof AppAppointmentsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/contacts': {
+      id: '/_app/contacts'
+      path: '/contacts'
+      fullPath: '/contacts'
+      preLoaderRoute: typeof AppContactsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/documents': {
       id: '/_app/documents'
       path: '/documents'
@@ -216,11 +362,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppEmergencyRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/encounters': {
+      id: '/_app/encounters'
+      path: '/encounters'
+      fullPath: '/encounters'
+      preLoaderRoute: typeof AppEncountersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/family': {
+      id: '/_app/family'
+      path: '/family'
+      fullPath: '/family'
+      preLoaderRoute: typeof AppFamilyRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/imaging': {
       id: '/_app/imaging'
       path: '/imaging'
       fullPath: '/imaging'
       preLoaderRoute: typeof AppImagingRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/immunizations': {
+      id: '/_app/immunizations'
+      path: '/immunizations'
+      fullPath: '/immunizations'
+      preLoaderRoute: typeof AppImmunizationsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/implants': {
+      id: '/_app/implants'
+      path: '/implants'
+      fullPath: '/implants'
+      preLoaderRoute: typeof AppImplantsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/insurance': {
+      id: '/_app/insurance'
+      path: '/insurance'
+      fullPath: '/insurance'
+      preLoaderRoute: typeof AppInsuranceRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/labs': {
@@ -237,6 +418,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMedicationsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/pharmacy': {
+      id: '/_app/pharmacy'
+      path: '/pharmacy'
+      fullPath: '/pharmacy'
+      preLoaderRoute: typeof AppPharmacyRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/problems': {
       id: '/_app/problems'
       path: '/problems'
@@ -244,11 +432,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProblemsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/procedures': {
+      id: '/_app/procedures'
+      path: '/procedures'
+      fullPath: '/procedures'
+      preLoaderRoute: typeof AppProceduresRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/providers': {
       id: '/_app/providers'
       path: '/providers'
       fullPath: '/providers'
       preLoaderRoute: typeof AppProvidersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/social': {
+      id: '/_app/social'
+      path: '/social'
+      fullPath: '/social'
+      preLoaderRoute: typeof AppSocialRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/vitals': {
+      id: '/_app/vitals'
+      path: '/vitals'
+      fullPath: '/vitals'
+      preLoaderRoute: typeof AppVitalsRouteImport
       parentRoute: typeof AppRoute
     }
     '/api/auth/$': {
@@ -263,25 +472,47 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppAllergiesRoute: typeof AppAllergiesRoute
+  AppAppointmentsRoute: typeof AppAppointmentsRoute
+  AppContactsRoute: typeof AppContactsRoute
   AppDocumentsRoute: typeof AppDocumentsRoute
   AppEmergencyRoute: typeof AppEmergencyRoute
+  AppEncountersRoute: typeof AppEncountersRoute
+  AppFamilyRoute: typeof AppFamilyRoute
   AppImagingRoute: typeof AppImagingRoute
+  AppImmunizationsRoute: typeof AppImmunizationsRoute
+  AppImplantsRoute: typeof AppImplantsRoute
+  AppInsuranceRoute: typeof AppInsuranceRoute
   AppLabsRoute: typeof AppLabsRoute
   AppMedicationsRoute: typeof AppMedicationsRoute
+  AppPharmacyRoute: typeof AppPharmacyRoute
   AppProblemsRoute: typeof AppProblemsRoute
+  AppProceduresRoute: typeof AppProceduresRoute
   AppProvidersRoute: typeof AppProvidersRoute
+  AppSocialRoute: typeof AppSocialRoute
+  AppVitalsRoute: typeof AppVitalsRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAllergiesRoute: AppAllergiesRoute,
+  AppAppointmentsRoute: AppAppointmentsRoute,
+  AppContactsRoute: AppContactsRoute,
   AppDocumentsRoute: AppDocumentsRoute,
   AppEmergencyRoute: AppEmergencyRoute,
+  AppEncountersRoute: AppEncountersRoute,
+  AppFamilyRoute: AppFamilyRoute,
   AppImagingRoute: AppImagingRoute,
+  AppImmunizationsRoute: AppImmunizationsRoute,
+  AppImplantsRoute: AppImplantsRoute,
+  AppInsuranceRoute: AppInsuranceRoute,
   AppLabsRoute: AppLabsRoute,
   AppMedicationsRoute: AppMedicationsRoute,
+  AppPharmacyRoute: AppPharmacyRoute,
   AppProblemsRoute: AppProblemsRoute,
+  AppProceduresRoute: AppProceduresRoute,
   AppProvidersRoute: AppProvidersRoute,
+  AppSocialRoute: AppSocialRoute,
+  AppVitalsRoute: AppVitalsRoute,
   AppIndexRoute: AppIndexRoute,
 }
 

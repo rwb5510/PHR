@@ -32,3 +32,15 @@
     color: var(--color-ink);
   }
 }
+
+@media print {
+  header,
+  footer,
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+  }
+}
