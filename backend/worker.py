@@ -5,10 +5,25 @@ import os
 import sys
 sys.path.insert(0, "/app")
 
+from sqlalchemy import text
 from app.database import SessionLocal
 from app.processor import claim_next_job, process_job
 
+def wait_for_db():
+    for attempt in range(60):
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+            return
+        except Exception as exc:
+            print(f"waiting for database ({attempt + 1}/60): {exc}", flush=True)
+            time.sleep(1)
+        finally:
+            db.close()
+    raise RuntimeError("database never became ready")
+
 def main():
+    wait_for_db()
     print("Worker started", flush=True)
     while True:
         db = SessionLocal()

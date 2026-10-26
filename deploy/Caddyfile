@@ -1,0 +1,11 @@
+# Optional reverse proxy profile.
+# Point your public hostname here. TLS stays on the outer proxy if you already have one.
+# Required headers: Host, X-Forwarded-Proto, X-Forwarded-For.
+# Upload body size: 50 MB (matches the API).
+
+:80 {
+	request_body {
+		max_size 50MB
+	}
+	reverse_proxy web:5173
+}

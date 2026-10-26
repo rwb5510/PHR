@@ -2,82 +2,142 @@ services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_USER: phr
-      POSTGRES_PASSWORD: phr
-      POSTGRES_DB: phr
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-phr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-phr}
+      POSTGRES_DB: ${POSTGRES_DB:-phr}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U phr"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-phr} -d ${POSTGRES_DB:-phr}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 12
     mem_limit: 1g
+    restart: unless-stopped
 
   orthanc:
     image: orthancteam/orthanc:24.10.2
     environment:
       ORTHANC__NAME: HouseholdPHR
-      ORTHANC__REGISTERED_USERS: '{"orthanc":"orthanc"}'
+      ORTHANC__AUTHENTICATION_ENABLED: "true"
+      ORTHANC__REGISTERED_USERS: '{"${ORTHANC_USER:-orthanc}":"${ORTHANC_PASS:-orthanc}"}'
+      ORTHANC__REMOTE_ACCESS_ALLOWED: "true"
+      DICOM_WEB_PLUGIN_ENABLED: "true"
+      OHIF_PLUGIN_ENABLED: "true"
       VERBOSE_ENABLED: "false"
-    # Ports 8042 and 4242 are NOT published. Internal only.
+    volumes:
+      - orthanc:/var/lib/orthanc/db
     mem_limit: 2g
-    depends_on:
-      - db
-
-  backend:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql://phr:phr@db:5432/phr
-      STORAGE_ROOT: /data/documents
-      ORTHANC_URL: http://orthanc:8042
-      ORTHANC_USER: orthanc
-      ORTHANC_PASS: orthanc
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - ./seed:/seed
-      - documents:/data/documents
-    mem_limit: 512m
 
-  worker:
-    build: ./backend
-    command: python worker.py
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     environment:
-      DATABASE_URL: postgresql://phr:phr@db:5432/phr
+      DATABASE_URL: postgresql://${POSTGRES_USER:-phr}:${POSTGRES_PASSWORD:-phr}@db:5432/${POSTGRES_DB:-phr}
       STORAGE_ROOT: /data/documents
+      ORTHANC_URL: http://orthanc:8042
+      ORTHANC_USER: ${ORTHANC_USER:-orthanc}
+      ORTHANC_PASS: ${ORTHANC_PASS:-orthanc}
+      BOOTSTRAP_USERNAME: ${BOOTSTRAP_USERNAME:-owner}
+      BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:-change-me-now}
+      HOUSEHOLD_NAME: ${HOUSEHOLD_NAME:-Household}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODE: ${LLM_MODE:-off}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_AUTOFILE: ${LLM_AUTOFILE:-false}
     depends_on:
       db:
+        condition: service_healthy
+      orthanc:
+        condition: service_started
+    volumes:
+      - documents:/data/documents
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 512m
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: python worker.py
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-phr}:${POSTGRES_PASSWORD:-phr}@db:5432/${POSTGRES_DB:-phr}
+      STORAGE_ROOT: /data/documents
+      ORTHANC_URL: http://orthanc:8042
+      ORTHANC_USER: ${ORTHANC_USER:-orthanc}
+      ORTHANC_PASS: ${ORTHANC_PASS:-orthanc}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODE: ${LLM_MODE:-off}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_AUTOFILE: ${LLM_AUTOFILE:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
         condition: service_healthy
     volumes:
       - documents:/data/documents
     mem_limit: 1g
+    restart: unless-stopped
 
-  frontend:
+  web:
     build: ./frontend
     ports:
       - "5173:5173"
+    environment:
+      VITE_API_PROXY: http://api:8000
     depends_on:
-      - backend
+      api:
+        condition: service_healthy
     mem_limit: 128m
+    restart: unless-stopped
+
+  # Optional. Do not run on an 8 GB box together with Orthanc.
+  # docker compose --profile local-llm up
+  ollama:
+    image: ollama/ollama:0.3.12
+    profiles: ["local-llm"]
+    environment:
+      OLLAMA_HOST: 0.0.0.0
+    volumes:
+      - ollama:/root/.ollama
+    mem_limit: 4g
+    restart: unless-stopped
+
+  # Optional. Use only if this machine does not already have a reverse proxy.
+  # docker compose --profile proxy up
+  proxy:
+    image: caddy:2.8.4
+    profiles: ["proxy"]
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - web
+    mem_limit: 128m
+    restart: unless-stopped
 
 volumes:
   pgdata:
   documents:
-
-# Optional profile. Do not run on the 8 GB box together with Orthanc.
-# Start with: docker compose --profile local-llm up
-profiles:
-  local-llm:
-    services:
-      ollama:
-        image: ollama/ollama:0.3.12
-        profiles: ["local-llm"]
-        environment:
-          - OLLAMA_HOST=0.0.0.0
-        # Not published. Internal only.
+  orthanc:
+  ollama:

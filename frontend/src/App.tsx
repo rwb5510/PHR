@@ -1,52 +1,151 @@
-import { Routes, Route, Link, useParams } from 'react-router-dom'
-import { useState, useEffect, ChangeEvent } from 'react'
-
-const API = '/api'
+import { Routes, Route, Link, useParams, useNavigate, Navigate } from 'react-router-dom'
+import { useState, useEffect, ChangeEvent, FormEvent } from 'react'
+import { api, apiJson } from './api'
 
 function Disclaimer() {
   return (
-    <footer style={{ marginTop: 40, padding: 12, borderTop: '1px solid #ccc', fontSize: 12 }}>
+    <footer className="disclaimer">
       This is a personal household record. It is not a medical device, not an emergency service, and not a substitute for your clinicians or the original report. Ranges shown are the ranges that came with the result.
     </footer>
   )
 }
 
-function Profiles() {
-  const [profiles, setProfiles] = useState<any[]>([])
-  useEffect(() => {
-    fetch(API + '/profiles').then(r => r.json()).then(setProfiles)
-  }, [])
+function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
+  const [username, setUsername] = useState('owner')
+  const [password, setPassword] = useState('')
+  const [totp, setTotp] = useState('')
+  const [needTotp, setNeedTotp] = useState(false)
+  const [error, setError] = useState('')
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    setError('')
+    const r = await api('/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, totp_code: totp || null }),
+    })
+    const data = await r.json().catch(() => ({}))
+    if (r.ok) {
+      onLoggedIn()
+      return
+    }
+    if (String(data.detail) === 'totp_required') {
+      setNeedTotp(true)
+      setError('Enter the authenticator code.')
+      return
+    }
+    setError('Could not sign in. Check the username and password in your .env file.')
+  }
   return (
-    <div>
-      <h1>Profiles</h1>
-      <ul>
-        {profiles.map(p => (
-          <li key={p.id}><Link to={`/profile/${p.id}`}>{p.legal_name}</Link></li>
-        ))}
-      </ul>
+    <div className="shell">
+      <h1>Household PHR</h1>
+      <div className="card">
+        <form onSubmit={submit}>
+          <label>Username
+            <input value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" />
+          </label>
+          <label>Password
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
+          </label>
+          {needTotp && (
+            <label>Authenticator code
+              <input value={totp} onChange={e => setTotp(e.target.value)} autoComplete="one-time-code" />
+            </label>
+          )}
+          {error && <p className="error">{error}</p>}
+          <button type="submit">Sign in</button>
+        </form>
+        <p>There is no signup. The first boot creates the household user from <code>BOOTSTRAP_USERNAME</code> / <code>BOOTSTRAP_PASSWORD</code>.</p>
+      </div>
+      <Disclaimer />
     </div>
   )
 }
 
-function ProfileHome() {
+function Profiles({ me, onRefresh }: { me: any, onRefresh: () => void }) {
+  const [profiles, setProfiles] = useState<any[]>([])
+  const [legalName, setLegalName] = useState('')
+  const [dob, setDob] = useState('')
+  const [sex, setSex] = useState('')
+  const [error, setError] = useState('')
+  const load = () => apiJson<any[]>('/profiles').then(setProfiles).catch(e => setError(e.message))
+  useEffect(() => { load() }, [])
+  const create = async (e: FormEvent) => {
+    e.preventDefault()
+    setError('')
+    await apiJson('/profiles', {
+      method: 'POST',
+      body: JSON.stringify({ legal_name: legalName, date_of_birth: dob || null, sex: sex || null }),
+    })
+    setLegalName('')
+    setDob('')
+    load()
+    onRefresh()
+  }
+  const activate = async (id: number) => {
+    await apiJson(`/session/active-profile/${id}`, { method: 'POST' })
+    onRefresh()
+  }
+  return (
+    <div>
+      <h1>People in this household</h1>
+      {error && <p className="error">{error}</p>}
+      <div className="card">
+        {profiles.length === 0 && <p>No people yet. Add someone to open a chart.</p>}
+        <ul>
+          {profiles.map(p => (
+            <li key={p.id}>
+              <Link className="person-name" to={`/profile/${p.id}/dashboard`} onClick={() => activate(p.id)}>{p.legal_name}</Link>
+              {p.date_of_birth ? ` — ${p.date_of_birth}` : ''}
+              {me?.active_profile_id === p.id ? ' (open)' : ''}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="card">
+        <h2>Add a person</h2>
+        <form onSubmit={create}>
+          <label>Legal name<input value={legalName} onChange={e => setLegalName(e.target.value)} required /></label>
+          <label>Date of birth<input type="date" value={dob} onChange={e => setDob(e.target.value)} /></label>
+          <label>Sex for clinical documents
+            <select value={sex} onChange={e => setSex(e.target.value)}>
+              <option value="">—</option>
+              <option value="female">female</option>
+              <option value="male">male</option>
+              <option value="other">other</option>
+              <option value="unknown">unknown</option>
+            </select>
+          </label>
+          <button type="submit">Create profile</button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function ProfileNav() {
   const { id } = useParams()
   const [inbox, setInbox] = useState(0)
+  const [profile, setProfile] = useState<any>(null)
   useEffect(() => {
-    fetch(`${API}/profiles/${id}/inbox-count`).then(r => r.json()).then(d => setInbox(d.count || 0))
+    apiJson(`${'/profiles/' + id}`).then(setProfile).catch(() => setProfile(null))
+    apiJson<{ count: number }>(`/profiles/${id}/inbox-count`).then(d => setInbox(d.count || 0)).catch(() => setInbox(0))
   }, [id])
   return (
     <div>
-      <h1>Profile {id}</h1>
-      <nav>
-        <Link to={`/profile/${id}/dashboard`}>Dashboard</Link> |{' '}
-        <Link to={`/profile/${id}/encounters`}>Encounters</Link> |{' '}
-        <Link to={`/profile/${id}/labs`}>Lab Reports</Link> |{' '}
-        <Link to={`/profile/${id}/trends/Sodium`}>Sodium Trend</Link> |{' '}
-        <Link to={`/profile/${id}/imaging`}>Imaging</Link> |{' '}
-        <Link to={`/profile/${id}/documents`}>Documents</Link> |{' '}
-        <Link to={`/profile/${id}/inbox`}>Review Inbox {inbox > 0 && <span style={{ background: '#c00', color: '#fff', borderRadius: 8, padding: '0 6px', fontSize: 12 }}>{inbox}</span>}</Link> |{' '}
-        <Link to={`/profile/${id}/emergency`}>Emergency</Link> |{' '}
-        <a href={`${API}/profiles/${id}/export-ccd`} target="_blank" rel="noreferrer">Export CCD</a>
+      <h1 className="person-name">{profile?.legal_name || `Profile ${id}`}</h1>
+      <nav className="section-nav">
+        <Link to={`/profile/${id}/dashboard`}>Dashboard</Link>
+        <Link to={`/profile/${id}/encounters`}>Encounters</Link>
+        <Link to={`/profile/${id}/medications`}>Medications</Link>
+        <Link to={`/profile/${id}/problems`}>Problems</Link>
+        <Link to={`/profile/${id}/allergies`}>Allergies</Link>
+        <Link to={`/profile/${id}/labs`}>Lab reports</Link>
+        <Link to={`/profile/${id}/trends/Sodium`}>Sodium trend</Link>
+        <Link to={`/profile/${id}/imaging`}>Imaging</Link>
+        <Link to={`/profile/${id}/documents`}>Documents</Link>
+        <Link to={`/profile/${id}/inbox`}>Review inbox {inbox > 0 && <span className="badge">{inbox}</span>}</Link>
+        <Link to={`/profile/${id}/emergency`}>Emergency</Link>
+        <a href={`/api/profiles/${id}/export-ccd`} target="_blank" rel="noreferrer">Export CCD</a>
       </nav>
     </div>
   )
@@ -55,43 +154,99 @@ function ProfileHome() {
 function Dashboard() {
   const { id } = useParams()
   const [d, setD] = useState<any>(null)
-  useEffect(() => { fetch(`${API}/profiles/${id}/dashboard`).then(r => r.json()).then(setD) }, [id])
-  if (!d) return <div>Loading...</div>
+  const [error, setError] = useState('')
+  useEffect(() => {
+    apiJson(`/profiles/${id}/dashboard`).then(setD).catch(e => setError(e.message))
+  }, [id])
+  if (error) return <div className="error">{error}</div>
+  if (!d) return <div>Loading…</div>
   const demo = d.demographics
   return (
     <div>
-      <h2>Dashboard</h2>
-      <p>{demo.legal_name} {demo.preferred_name ? `(${demo.preferred_name})` : ''} — DOB {demo.date_of_birth || '—'} — {demo.sex || ''}</p>
-      <h3><Link to={`/profile/${id}/problems`}>Active problems</Link></h3>
-      <ul>{d.problems.map((p: any) => <li key={p.id}>{p.display_name}</li>)}</ul>
-      <h3><Link to={`/profile/${id}/allergies`}>Allergies</Link></h3>
-      <ul>{d.allergies.map((a: any) => <li key={a.id}>{a.substance}</li>)}</ul>
-      <h3><Link to={`/profile/${id}/medications`}>Medications</Link></h3>
-      <ul>{d.medications.map((m: any) => <li key={m.id}>{m.name}</li>)}</ul>
-      {d.next_appointment && <p>Next appointment: {d.next_appointment.when} — {d.next_appointment.provider || ''} — {d.next_appointment.reason || ''}</p>}
-      <h3>Recent encounters</h3>
-      <ul>{d.recent_encounters.map((e: any) => <li key={e.id}><Link to={`/encounter/${e.id}`}>{e.type} — {e.start} — {e.reason || ''}</Link></li>)}</ul>
-      <h3>Flagged labs (L/H)</h3>
-      <ul>{d.flagged_labs.map((c: any, i: number) => <li key={i}><Link to={`/profile/${id}/trends/${c.analyte || 'Sodium'}`}>{c.original_name}: {c.value_text} {c.unit || ''} ({c.flag}) {c.ref_low != null ? `${c.ref_low}–${c.ref_high}` : ''}</Link></li>)}</ul>
-      <h3>Recent imaging</h3>
-      {Object.entries(d.imaging_by_modality || {}).map(([mod, reports]: any) => (
-        <div key={mod}>
-          <h4>{mod}</h4>
-          <ul>{reports.map((r: any) => <li key={r.id}><Link to={`/imaging-report/${r.id}`}>{r.performed_at} — {r.impression?.slice(0, 60) || ''}</Link> {r.dicom_study_id && <a href={`${API}/viewer/${r.dicom_study_id}`}>viewer</a>}</li>)}</ul>
-        </div>
-      ))}
+      <div className="card">
+        <p className="person-name">{demo.legal_name} {demo.preferred_name ? `(${demo.preferred_name})` : ''} — DOB {demo.date_of_birth || '—'} — {demo.sex || ''}</p>
+      </div>
+      <div className="card">
+        <h3><Link to={`/profile/${id}/problems`}>Active problems</Link></h3>
+        <ul>{d.problems.map((p: any) => <li key={p.id}>{p.display_name}</li>)}</ul>
+        {d.problems.length === 0 && <p>None entered yet.</p>}
+        <h3><Link to={`/profile/${id}/allergies`}>Allergies</Link></h3>
+        <ul>{d.allergies.map((a: any) => <li key={a.id}>{a.substance}</li>)}</ul>
+        {d.allergies.length === 0 && <p>None entered yet.</p>}
+        <h3><Link to={`/profile/${id}/medications`}>Medications</Link></h3>
+        <ul>{d.medications.map((m: any) => <li key={m.id}>{m.name}</li>)}</ul>
+        {d.medications.length === 0 && <p>None entered yet.</p>}
+        {d.next_appointment && <p>Next appointment: {d.next_appointment.when} — {d.next_appointment.provider || ''} — {d.next_appointment.reason || ''}</p>}
+        <h3>Recent encounters</h3>
+        <ul>{d.recent_encounters.map((e: any) => <li key={e.id}><Link to={`/encounter/${e.id}`}>{e.type} — {e.start} — {e.reason || ''}</Link></li>)}</ul>
+        <h3>Flagged labs (L/H)</h3>
+        <ul>{d.flagged_labs.map((c: any, i: number) => <li key={i}><Link to={`/profile/${id}/trends/${c.analyte || 'Sodium'}`}>{c.original_name}: {c.value_text} {c.unit || ''} ({c.flag}) {c.ref_low != null ? `${c.ref_low}–${c.ref_high}` : ''}</Link></li>)}</ul>
+        <h3>Recent imaging</h3>
+        {Object.entries(d.imaging_by_modality || {}).map(([mod, reports]: any) => (
+          <div key={mod}>
+            <h4>{mod}</h4>
+            <ul>{reports.map((r: any) => <li key={r.id}><Link to={`/profile/${id}/imaging`}>{r.performed_at} — {r.impression?.slice(0, 60) || ''}</Link> {r.dicom_study_id && <a href={`/api/viewer/${r.dicom_study_id}`}>viewer</a>}</li>)}</ul>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
 
 function Emergency() {
   const { id } = useParams()
+  const [d, setD] = useState<any>(null)
+  useEffect(() => { apiJson(`/profiles/${id}/emergency`).then(setD).catch(() => setD(null)) }, [id])
   return (
-    <div>
+    <div className="card">
       <h2>Emergency snapshot</h2>
       <p>How to hand this to a clinician: give them this printout or the C-CDA download, not a login.</p>
-      <p><a href={`${API}/profiles/${id}/export-ccd`}>Download C-CDA</a></p>
-      <button onClick={() => window.print()}>Print</button>
+      {d && (
+        <>
+          <p className="person-name">{d.demographics.legal_name} — DOB {d.demographics.date_of_birth || '—'} — {d.demographics.sex || ''} — {d.demographics.blood_type || ''}</p>
+          <h3>Allergies</h3>
+          <ul>{d.allergies.map((a: any, i: number) => <li key={i}>{a.substance} — {a.reaction || ''} ({a.severity})</li>)}</ul>
+          <h3>Problems</h3>
+          <ul>{d.problems.map((p: any, i: number) => <li key={i}>{p.display_name}</li>)}</ul>
+          <h3>Medications</h3>
+          <ul>{d.medications.map((m: any, i: number) => <li key={i}>{m.name} {m.dose || ''} {m.dose_unit || ''} {m.frequency || ''}</li>)}</ul>
+        </>
+      )}
+      <p><a href={`/api/profiles/${id}/export-ccd`}>Download C-CDA</a></p>
+      <button className="secondary" onClick={() => window.print()}>Print</button>
+    </div>
+  )
+}
+
+function SimpleList({ path, title, fields, createPath, payload }: { path: string, title: string, fields: { key: string, label: string }[], createPath: string, payload: (form: Record<string, string>) => object }) {
+  const { id } = useParams()
+  const [rows, setRows] = useState<any[]>([])
+  const [form, setForm] = useState<Record<string, string>>({})
+  const load = () => apiJson<any[]>(path.replace(':id', id || '')).then(setRows).catch(() => setRows([]))
+  useEffect(() => { load() }, [id, path])
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    await apiJson(createPath.replace(':id', id || ''), { method: 'POST', body: JSON.stringify(payload(form)) })
+    setForm({})
+    load()
+  }
+  return (
+    <div className="card">
+      <h2>{title}</h2>
+      <ul>
+        {rows.map(r => (
+          <li key={r.id}>{fields.map(f => r[f.key]).filter(Boolean).join(' — ')} {r.status && r.status !== 'active' ? `(${r.status})` : ''}</li>
+        ))}
+      </ul>
+      {rows.length === 0 && <p>Nothing here yet. Add a row below.</p>}
+      <form onSubmit={submit}>
+        {fields.map(f => (
+          <label key={f.key}>{f.label}
+            <input value={form[f.key] || ''} onChange={e => setForm({ ...form, [f.key]: e.target.value })} required={f.key === fields[0].key} />
+          </label>
+        ))}
+        <button type="submit">Add</button>
+      </form>
     </div>
   )
 }
@@ -100,10 +255,10 @@ function Encounters() {
   const { id } = useParams()
   const [encs, setEncs] = useState<any[]>([])
   useEffect(() => {
-    fetch(`${API}/profiles/${id}/encounters`).then(r => r.json()).then(setEncs)
+    apiJson<any[]>(`/profiles/${id}/encounters`).then(setEncs).catch(() => setEncs([]))
   }, [id])
   return (
-    <div>
+    <div className="card">
       <h2>Encounters</h2>
       <ul>
         {encs.map(e => (
@@ -112,6 +267,7 @@ function Encounters() {
           </li>
         ))}
       </ul>
+      {encs.length === 0 && <p>No encounters yet. Uploading a CCD or entering a lab will create them.</p>}
     </div>
   )
 }
@@ -122,13 +278,13 @@ function EncounterDetail() {
   const [orders, setOrders] = useState<any[]>([])
   const [fulfilling, setFulfilling] = useState<any[]>([])
   useEffect(() => {
-    fetch(`${API}/encounters/${id}`).then(r => r.json()).then(setEnc)
-    fetch(`${API}/encounters/${id}/orders`).then(r => r.json()).then(setOrders)
-    fetch(`${API}/encounters/${id}/fulfilling-orders`).then(r => r.json()).then(setFulfilling)
+    apiJson(`/encounters/${id}`).then(setEnc)
+    apiJson<any[]>(`/encounters/${id}/orders`).then(setOrders)
+    apiJson<any[]>(`/encounters/${id}/fulfilling-orders`).then(setFulfilling)
   }, [id])
-  if (!enc) return <div>Loading...</div>
+  if (!enc) return <div>Loading…</div>
   return (
-    <div>
+    <div className="card">
       <h2>{enc.type} on {enc.start}</h2>
       <p>Reason: {enc.reason}</p>
       <h3>Orders placed here</h3>
@@ -147,10 +303,10 @@ function LabReports() {
   const { id } = useParams()
   const [reports, setReports] = useState<any[]>([])
   useEffect(() => {
-    fetch(`${API}/profiles/${id}/lab-reports`).then(r => r.json()).then(setReports)
+    apiJson<any[]>(`/profiles/${id}/lab-reports`).then(setReports).catch(() => setReports([]))
   }, [id])
   return (
-    <div>
+    <div className="card">
       <h2>Lab Reports</h2>
       <ul>
         {reports.map(r => (
@@ -165,17 +321,17 @@ function LabReportView() {
   const { id } = useParams()
   const [report, setReport] = useState<any>(null)
   useEffect(() => {
-    fetch(`${API}/lab-reports/${id}`).then(r => r.json()).then(setReport)
+    apiJson(`/lab-reports/${id}`).then(setReport)
   }, [id])
-  if (!report) return <div>Loading...</div>
+  if (!report) return <div>Loading…</div>
   return (
-    <div>
+    <div className="card">
       <h2>{report.panel_name}</h2>
       <p>Collected: {report.collection_time}</p>
       {report.source_document_id && (
-        <p><a href={`${API}/documents/${report.source_document_id}/file`} target="_blank" rel="noreferrer">Open source document</a></p>
+        <p><a href={`/api/documents/${report.source_document_id}/file`} target="_blank" rel="noreferrer">Open source document</a></p>
       )}
-      <table border={1} cellPadding={6}>
+      <table>
         <thead>
           <tr><th>Name</th><th>Value</th><th>Unit</th><th>Range</th><th>Flag</th></tr>
         </thead>
@@ -199,10 +355,9 @@ function TrendView() {
   const { id, analyte } = useParams()
   const [data, setData] = useState<any>(null)
   useEffect(() => {
-    fetch(`${API}/profiles/${id}/trends/${analyte}`).then(r => r.json()).then(setData)
+    apiJson(`/profiles/${id}/trends/${analyte}`).then(setData).catch(() => setData({ points: [], analyte }))
   }, [id, analyte])
-  if (!data) return <div>Loading...</div>
-  // Group by unit for display; do not force mixed units
+  if (!data) return <div>Loading…</div>
   const byUnit: Record<string, any[]> = {}
   data.points.forEach((pt: any) => {
     const unit = pt.normalized_unit || pt.original_unit || 'unknown'
@@ -210,7 +365,7 @@ function TrendView() {
     byUnit[unit].push(pt)
   })
   return (
-    <div>
+    <div className="card">
       <h2>{data.analyte} Trend</h2>
       {Object.entries(byUnit).map(([unit, pts]) => (
         <div key={unit}>
@@ -225,7 +380,7 @@ function TrendView() {
           </ul>
         </div>
       ))}
-      {data.points.length === 0 && <p>No matched points.</p>}
+      {data.points.length === 0 && <p>No matched points. Upload the synthetic CCD and accept the sodium proposal.</p>}
     </div>
   )
 }
@@ -235,18 +390,18 @@ function ImagingLibrary() {
   const [groups, setGroups] = useState<any>({})
   const [studies, setStudies] = useState<any[]>([])
   useEffect(() => {
-    fetch(`${API}/profiles/${id}/imaging-reports`).then(r => r.json()).then(setGroups)
-    fetch(`${API}/profiles/${id}/studies`).then(r => r.json()).then(setStudies)
+    apiJson(`/profiles/${id}/imaging-reports`).then(setGroups).catch(() => setGroups({}))
+    apiJson<any[]>(`/profiles/${id}/studies`).then(setStudies).catch(() => setStudies([]))
   }, [id])
   return (
-    <div>
+    <div className="card">
       <h2>Imaging Library</h2>
       <h3>Studies</h3>
       <ul>
         {studies.map(s => (
           <li key={s.id}>
             {s.modality} — {s.study_date || ''} — {s.description || s.study_instance_uid}
-            {' '}<a href={`${API}/viewer/${s.study_instance_uid}`} target="_blank" rel="noreferrer">Viewer</a>
+            {' '}<a href={`/api/viewer/${s.study_instance_uid}`} target="_blank" rel="noreferrer">Viewer</a>
           </li>
         ))}
       </ul>
@@ -258,7 +413,7 @@ function ImagingLibrary() {
               <li key={r.id}>
                 {r.performed_at} — {r.body_site || ''} — {r.impression?.slice(0, 80) || ''}
                 {r.source_document_id && (
-                  <> — <a href={`${API}/documents/${r.source_document_id}/file`} target="_blank" rel="noreferrer">source</a></>
+                  <> — <a href={`/api/documents/${r.source_document_id}/file`} target="_blank" rel="noreferrer">source</a></>
                 )}
                 {r.dicom_study_id && <> — study {r.dicom_study_id}</>}
               </li>
@@ -276,48 +431,75 @@ function Documents() {
   const [msg, setMsg] = useState('')
   const [useModel, setUseModel] = useState(false)
   const [settings, setSettings] = useState<any>({ mode: 'off' })
-  const load = () => fetch(`${API}/profiles/${id}/documents`).then(r => r.json()).then(setDocs)
+  const [openText, setOpenText] = useState<number | null>(null)
+  const [extracted, setExtracted] = useState<Record<number, string>>({})
+  const load = () => apiJson<any[]>(`/profiles/${id}/documents`).then(setDocs).catch(() => setDocs([]))
   useEffect(() => {
     load()
-    fetch(`${API}/settings`).then(r => r.json()).then(setSettings)
+    apiJson('/settings').then(setSettings).catch(() => setSettings({ mode: 'off' }))
   }, [id])
+  useEffect(() => {
+    const busy = docs.some(d => d.job_status === 'queued' || d.job_status === 'processing')
+    if (!busy) return
+    const t = setInterval(load, 2000)
+    return () => clearInterval(t)
+  }, [docs, id])
   const upload = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
     const fd = new FormData()
     fd.append('file', f)
     fd.append('use_model', String(useModel && settings.mode !== 'off'))
-    const r = await fetch(`${API}/profiles/${id}/documents`, { method: 'POST', body: fd })
+    const r = await api(`/profiles/${id}/documents`, { method: 'POST', body: fd })
     const j = await r.json()
     if (j.duplicate) setMsg(j.warning)
     else setMsg(`Uploaded. Job ${j.job_id} queued.`)
     load()
   }
   const processNow = async (jobId: number) => {
-    await fetch(`${API}/jobs/${jobId}/process`, { method: 'POST' })
+    await api(`/jobs/${jobId}/process`, { method: 'POST' })
     load()
   }
   const retry = async (jobId: number) => {
-    await fetch(`${API}/jobs/${jobId}/retry`, { method: 'POST' })
+    await api(`/jobs/${jobId}/retry`, { method: 'POST' })
     load()
   }
+  const showText = async (docId: number) => {
+    if (openText === docId) {
+      setOpenText(null)
+      return
+    }
+    const t = await apiJson<{ extracted_text?: string }>(`/documents/${docId}/text`)
+    setExtracted(prev => ({ ...prev, [docId]: t.extracted_text || '' }))
+    setOpenText(docId)
+  }
   return (
-    <div>
+    <div className="card">
       <h2>Documents</h2>
-      <p>Max 50 MB per file. PDF, TIFF, JPG, PNG, TXT, MD.</p>
+      <p>Max 50 MB per file. PDF, TIFF, JPG, PNG, TXT, XML, MD. A lab result is a test name, a number, and a lab unit on the same row (Sodium 140 mmol/L). Letterhead, phones, comments, and page footers are ignored. Unknown test names go to the review inbox.</p>
       <label>
         <input type="checkbox" checked={useModel} disabled={settings.mode === 'off'} onChange={e => setUseModel(e.target.checked)} />
         Use model (default off; disabled when mode is off)
       </label>
       <input type="file" onChange={upload} />
-      {msg && <p style={{ color: 'orange' }}>{msg}</p>}
+      {msg && <p>{msg}</p>}
       <ul>
         {docs.map(d => (
-          <li key={d.id}>
-            <a href={`${API}/documents/${d.id}/file`} target="_blank" rel="noreferrer">{d.filename}</a>
+          <li key={d.id} style={{ marginBottom: 12 }}>
+            <a href={`/api/documents/${d.id}/file`} target="_blank" rel="noreferrer">{d.filename}</a>
             {' '}— {d.job_status} {d.ocr_used ? '(OCR)' : ''} {d.error || ''}
-            {d.job_status === 'queued' && <button onClick={() => processNow(d.job_id)}>Process now</button>}
-            {d.job_status === 'failed' && <button onClick={() => retry(d.job_id)}>Retry</button>}
+            {d.job_status === 'queued' && <button className="secondary" onClick={() => processNow(d.job_id)}>Process now</button>}
+            {(d.job_status === 'failed' || d.job_status === 'filed' || d.job_status === 'needs_review') && (
+              <button className="secondary" onClick={() => retry(d.job_id)}>
+                {d.job_status === 'failed' ? 'Retry' : 'Reprocess'}
+              </button>
+            )}
+            <button className="secondary" onClick={() => showText(d.id)}>Extracted text</button>
+            {openText === d.id && (
+              <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, background: '#fff', padding: 12, border: '1px solid var(--line)', maxHeight: 240, overflow: 'auto' }}>
+                {extracted[d.id] || '(no text yet)'}
+              </pre>
+            )}
           </li>
         ))}
       </ul>
@@ -327,28 +509,47 @@ function Documents() {
 
 function Settings() {
   const [s, setS] = useState<any>({ mode: 'off', base_url: '', model: '', llm_autofile: false })
-  useEffect(() => { fetch(`${API}/settings`).then(r => r.json()).then(setS) }, [])
+  const [totp, setTotp] = useState<any>(null)
+  const [code, setCode] = useState('')
+  useEffect(() => { apiJson('/settings').then(setS) }, [])
   const save = async () => {
-    const r = await fetch(`${API}/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(s) })
+    const r = await api('/settings', { method: 'POST', body: JSON.stringify(s) })
     setS(await r.json())
   }
+  const startTotp = async () => setTotp(await apiJson('/totp/start', { method: 'POST' }))
+  const confirmTotp = async () => {
+    await apiJson('/totp/confirm', { method: 'POST', body: JSON.stringify({ code }) })
+    setTotp({ ...totp, enabled: true })
+  }
   return (
-    <div>
+    <div className="card">
       <h2>Model settings</h2>
       <p>Key is LLM_API_KEY env var only. No API key field.</p>
       <label>Mode: <select value={s.mode} onChange={e => setS({ ...s, mode: e.target.value })}>
         <option value="off">off</option>
         <option value="remote">remote</option>
         <option value="local">local</option>
-      </select></label><br />
-      <label>Base URL: <input value={s.base_url || ''} onChange={e => setS({ ...s, base_url: e.target.value })} /></label><br />
-      <label>Model: <input value={s.model || ''} onChange={e => setS({ ...s, model: e.target.value })} /></label><br />
+      </select></label>
+      <label>Base URL: <input value={s.base_url || ''} onChange={e => setS({ ...s, base_url: e.target.value })} /></label>
+      <label>Model: <input value={s.model || ''} onChange={e => setS({ ...s, model: e.target.value })} /></label>
       <label>
         <input type="checkbox" checked={!!s.llm_autofile} onChange={e => setS({ ...s, llm_autofile: e.target.checked })} />
         llm_autofile (unsafe — default off)
-      </label><br />
+      </label>
       <button onClick={save}>Save</button>
       <p>{s.llm_autofile_warning}</p>
+      <h2>Authenticator</h2>
+      <p>Optional. Login works without it until you confirm a code.</p>
+      <button className="secondary" onClick={startTotp}>Enroll TOTP</button>
+      {totp?.secret && (
+        <div>
+          <p>Secret: {totp.secret}</p>
+          <p style={{ wordBreak: 'break-all' }}>{totp.otpauth_url}</p>
+          <label>Code from the app<input value={code} onChange={e => setCode(e.target.value)} /></label>
+          <button onClick={confirmTotp}>Confirm</button>
+        </div>
+      )}
+      {totp?.enabled && <p>TOTP is on. The next login will ask for a code.</p>}
     </div>
   )
 }
@@ -356,26 +557,39 @@ function Settings() {
 function Inbox() {
   const { id } = useParams()
   const [props, setProps] = useState<any[]>([])
-  const load = () => fetch(`${API}/profiles/${id}/proposals`).then(r => r.json()).then(setProps)
+  const load = () => apiJson<any[]>(`/profiles/${id}/proposals`).then(setProps).catch(() => setProps([]))
   useEffect(() => { load() }, [id])
   const accept = async (pid: number) => {
-    await fetch(`${API}/proposals/${pid}/accept`, { method: 'POST' })
+    await api(`/proposals/${pid}/accept`, { method: 'POST' })
     load()
   }
   const reject = async (pid: number) => {
-    await fetch(`${API}/proposals/${pid}/reject`, { method: 'POST' })
+    await api(`/proposals/${pid}/reject`, { method: 'POST' })
     load()
   }
   return (
-    <div>
+    <div className="card">
       <h2>Review Inbox</h2>
+      <p>These are candidate chart rows. Lab lines here did not auto-file (unknown test name, missing collection date, or a non-numeric value). Letterhead is not listed.</p>
       {props.length === 0 && <p>No pending proposals.</p>}
       <ul>
         {props.map(p => (
-          <li key={p.id}>
-            {p.type}: {p.quote || JSON.stringify(p.payload)}
-            <button onClick={() => accept(p.id)}>Accept</button>
-            <button onClick={() => reject(p.id)}>Reject</button>
+          <li key={p.id} style={{ marginBottom: 16 }}>
+            {p.type === 'lab_line' ? (
+              <div>
+                <strong>{p.payload?.original_name}</strong>
+                {' '}{p.payload?.value_text} {p.payload?.unit_original || ''}
+                {p.payload?.ref_text ? ` (${p.payload.ref_text})` : ''}
+                <div style={{ color: 'var(--muted)', fontSize: 13 }}>{p.quote}</div>
+              </div>
+            ) : (
+              <div>{p.type}: {p.quote || JSON.stringify(p.payload)}</div>
+            )}
+            {p.payload?.dob_mismatch && <span className="error"> {p.payload.dob_mismatch}</span>}
+            <div className="row">
+              <button onClick={() => accept(p.id)}>Accept</button>
+              <button className="secondary" onClick={() => reject(p.id)}>Reject</button>
+            </div>
           </li>
         ))}
       </ul>
@@ -383,25 +597,84 @@ function Inbox() {
   )
 }
 
-export default function App() {
+function ProfileLayout() {
   return (
-    <div style={{ fontFamily: 'sans-serif', maxWidth: 900, margin: '0 auto', padding: 16 }}>
-      <header>
-        <Link to="/">Household PHR</Link> | <Link to="/settings">Settings</Link>
+    <>
+      <ProfileNav />
+      <Routes>
+        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="emergency" element={<Emergency />} />
+        <Route path="encounters" element={<Encounters />} />
+        <Route path="medications" element={
+          <SimpleList
+            title="Medications"
+            path="/profiles/:id/medications"
+            createPath="/profiles/:id/medications"
+            fields={[{ key: 'name', label: 'Name' }, { key: 'dose', label: 'Dose' }, { key: 'frequency', label: 'Frequency' }]}
+            payload={f => ({ name: f.name, dose: f.dose || null, frequency: f.frequency || null })}
+          />
+        } />
+        <Route path="problems" element={
+          <SimpleList
+            title="Problems"
+            path="/profiles/:id/problems"
+            createPath="/profiles/:id/problems"
+            fields={[{ key: 'display_name', label: 'Name' }]}
+            payload={f => ({ display_name: f.display_name })}
+          />
+        } />
+        <Route path="allergies" element={
+          <SimpleList
+            title="Allergies"
+            path="/profiles/:id/allergies"
+            createPath="/profiles/:id/allergies"
+            fields={[{ key: 'substance', label: 'Substance' }, { key: 'reaction', label: 'Reaction' }]}
+            payload={f => ({ substance: f.substance, reaction: f.reaction || null })}
+          />
+        } />
+        <Route path="labs" element={<LabReports />} />
+        <Route path="trends/:analyte" element={<TrendView />} />
+        <Route path="imaging" element={<ImagingLibrary />} />
+        <Route path="documents" element={<Documents />} />
+        <Route path="inbox" element={<Inbox />} />
+        <Route index element={<Navigate to="dashboard" replace />} />
+      </Routes>
+    </>
+  )
+}
+
+export default function App() {
+  const [me, setMe] = useState<any | null | undefined>(undefined)
+  const navigate = useNavigate()
+  const refresh = () => {
+    api('/me').then(async r => {
+      if (r.status === 401) setMe(null)
+      else setMe(await r.json())
+    }).catch(() => setMe(null))
+  }
+  useEffect(() => { refresh() }, [])
+  const logout = async () => {
+    await api('/logout', { method: 'POST' })
+    setMe(null)
+    navigate('/')
+  }
+  if (me === undefined) return <div className="shell">Loading…</div>
+  if (!me) return <Login onLoggedIn={refresh} />
+  return (
+    <div className="shell">
+      <header className="topbar">
+        <Link to="/">Household PHR</Link>
+        <div className="row">
+          <span>{me.username}</span>
+          <Link to="/settings">Settings</Link>
+          <button className="secondary" onClick={logout}>Sign out</button>
+        </div>
       </header>
       <Routes>
-        <Route path="/" element={<Profiles />} />
-        <Route path="/profile/:id" element={<ProfileHome />} />
-        <Route path="/profile/:id/dashboard" element={<Dashboard />} />
-        <Route path="/profile/:id/emergency" element={<Emergency />} />
-        <Route path="/profile/:id/encounters" element={<Encounters />} />
+        <Route path="/" element={<Profiles me={me} onRefresh={refresh} />} />
+        <Route path="/profile/:id/*" element={<ProfileLayout />} />
         <Route path="/encounter/:id" element={<EncounterDetail />} />
-        <Route path="/profile/:id/labs" element={<LabReports />} />
         <Route path="/lab-report/:id" element={<LabReportView />} />
-        <Route path="/profile/:id/trends/:analyte" element={<TrendView />} />
-        <Route path="/profile/:id/imaging" element={<ImagingLibrary />} />
-        <Route path="/profile/:id/documents" element={<Documents />} />
-        <Route path="/profile/:id/inbox" element={<Inbox />} />
         <Route path="/settings" element={<Settings />} />
       </Routes>
       <Disclaimer />

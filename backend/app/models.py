@@ -56,6 +56,21 @@ class User(Base):
     totp_secret = Column(String, nullable=True)
     totp_enabled = Column(Boolean, default=False)
 
+    household = relationship("Household")
+    sessions = relationship("AuthSession", back_populates="user")
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_session"
+    id = Column(Integer, primary_key=True)
+    token = Column(String, unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
+    active_profile_id = Column(Integer, ForeignKey("profile.id"), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    expires_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", back_populates="sessions")
+
 class Profile(Base):
     __tablename__ = "profile"
     id = Column(Integer, primary_key=True)
@@ -436,6 +451,57 @@ class Appointment(Base):
     place = Column(String, nullable=True)
     reason = Column(String, nullable=True)
     status = Column(String, default="scheduled")
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class Provider(Base):
+    __tablename__ = "provider"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    credentials = Column(String, nullable=True)
+    specialty = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    fax = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    website = Column(String, nullable=True)
+    portal_url = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    is_primary = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class Insurance(Base):
+    __tablename__ = "insurance"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    payer = Column(String, nullable=False)
+    plan = Column(String, nullable=True)
+    member_id = Column(String, nullable=True)
+    group_number = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class Pharmacy(Base):
+    __tablename__ = "pharmacy"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    phone = Column(String, nullable=True)
+    fax = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class EmergencyContact(Base):
+    __tablename__ = "emergency_contact"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profile.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    relationship = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
 

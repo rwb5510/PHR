@@ -32,6 +32,9 @@ class ProfileCreate(BaseModel):
     preferred_name: Optional[str] = None
     date_of_birth: Optional[date] = None
     sex: Optional[str] = None
+    blood_type: Optional[str] = None
+    relationship_label: Optional[str] = None
+    notes: Optional[str] = None
 
 class ProfileOut(ProfileCreate):
     id: int

@@ -1,0 +1,15 @@
+.git
+.grok
+node_modules
+frontend/node_modules
+src
+public
+scripts
+server
+migrations
+screenshots
+dist
+.tanstack
+*.md
+.env
+.env.local

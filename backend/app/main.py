@@ -1,5 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse, Response
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Request
+from fastapi.responses import FileResponse, Response, JSONResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, date
@@ -8,9 +8,11 @@ import os
 import json
 import uuid
 import zipfile
+import time
 from io import BytesIO
 import pydicom
-from .database import get_db, engine
+import httpx
+from .database import get_db, engine, SessionLocal
 from .models import (
     Base, Profile, Encounter, Order, OrderResultLink, LabReport, LabComponent,
     CanonicalAnalyte, ImagingReport, OrderStatus, Document, Job, JobStatus,
@@ -30,37 +32,110 @@ from .lab_matching import (
 )
 from .seed import load_analytes
 from .extraction import MAX_UPLOAD_BYTES
-from .processor import process_job
+from .processor import process_job, reset_document_outputs
 from .ccda import build_ccd
 from .model_client import get_settings, update_settings, get_model_mode
+from .auth import AUTH_DISABLED, bootstrap, load_session, router as auth_router
+from .chart_routes import router as chart_router
 
-app = FastAPI(title="Household PHR Phase 4")
+app = FastAPI(title="Household PHR")
+app.include_router(auth_router)
+app.include_router(chart_router)
 
 STORAGE_ROOT = os.getenv("STORAGE_ROOT", "/data/documents")
 os.makedirs(STORAGE_ROOT, exist_ok=True)
 
+PUBLIC_PATHS = {"/health", "/login", "/logout", "/docs", "/openapi.json", "/redoc"}
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if AUTH_DISABLED:
+        return await call_next(request)
+    path = request.url.path
+    if path in PUBLIC_PATHS or path.startswith("/docs") or path.startswith("/redoc") or path.startswith("/openapi"):
+        return await call_next(request)
+    token = request.cookies.get("session")
+    if path.startswith("/viewer/"):
+        if not token:
+            return JSONResponse({"detail": "session required"}, status_code=401)
+        return await call_next(request)
+    db = SessionLocal()
+    try:
+        sess = load_session(db, token)
+        if not sess or not sess.user:
+            return JSONResponse({"detail": "login required"}, status_code=401)
+        user = sess.user
+        request.state.user = type("UserView", (), {
+            "id": user.id,
+            "household_id": user.household_id,
+            "username": user.username,
+            "password_hash": user.password_hash,
+            "totp_enabled": user.totp_enabled,
+            "totp_secret": user.totp_secret,
+        })()
+        request.state.auth_session = type("SessView", (), {
+            "id": sess.id,
+            "token": sess.token,
+            "user_id": sess.user_id,
+            "active_profile_id": sess.active_profile_id,
+        })()
+    finally:
+        db.close()
+    return await call_next(request)
+
 @app.on_event("startup")
 def startup():
-    Base.metadata.create_all(bind=engine)
+    last_err = None
+    for _ in range(30):
+        try:
+            Base.metadata.create_all(bind=engine)
+            last_err = None
+            break
+        except Exception as exc:
+            last_err = exc
+            time.sleep(1)
+    if last_err:
+        raise last_err
     load_analytes()
     os.makedirs(STORAGE_ROOT, exist_ok=True)
+    db = SessionLocal()
+    try:
+        bootstrap(db)
+    finally:
+        db.close()
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    orthanc_ok = False
+    try:
+        from .orthanc_client import ORTHANC_URL, ORTHANC_USER, ORTHANC_PASS
+        r = httpx.get(f"{ORTHANC_URL}/system", auth=(ORTHANC_USER, ORTHANC_PASS), timeout=2.0)
+        orthanc_ok = r.status_code == 200
+    except Exception:
+        pass
+    return {"status": "ok", "orthanc": orthanc_ok}
 
 # Profiles
 @app.post("/profiles", response_model=ProfileOut)
-def create_profile(p: ProfileCreate, db: Session = Depends(get_db)):
-    obj = Profile(household_id=1, **p.dict())
+def create_profile(p: ProfileCreate, request: Request, db: Session = Depends(get_db)):
+    hid = 1
+    user = getattr(request.state, "user", None)
+    if user is not None:
+        hid = user.household_id
+    obj = Profile(household_id=hid, **p.dict())
     db.add(obj)
     db.commit()
     db.refresh(obj)
     return obj
 
 @app.get("/profiles", response_model=List[ProfileOut])
-def list_profiles(db: Session = Depends(get_db)):
-    return db.query(Profile).all()
+def list_profiles(request: Request, db: Session = Depends(get_db)):
+    q = db.query(Profile)
+    user = getattr(request.state, "user", None)
+    if user is not None:
+        q = q.filter(Profile.household_id == user.household_id)
+    return q.all()
 
 # Encounters
 @app.post("/encounters", response_model=EncounterOut)
@@ -262,8 +337,8 @@ async def upload_document(
     if existing:
         return {
             "duplicate": True,
-            "warning": "Duplicate file already stored for this profile. Not filing a second copy.",
-            "document_id": existing.id
+            "warning": "This file is already stored. Open Documents and press Reprocess to parse it again.",
+            "document_id": existing.id,
         }
     # store
     rel_path = f"{profile_id}/{uuid.uuid4().hex}_{file.filename}"
@@ -337,8 +412,14 @@ def retry_job(job_id: int, db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(404)
-    if job.status not in (JobStatus.failed, JobStatus.processing):
-        raise HTTPException(400, "only failed or stuck processing jobs can be retried")
+    if job.status not in (
+        JobStatus.failed,
+        JobStatus.processing,
+        JobStatus.filed,
+        JobStatus.needs_review,
+    ):
+        raise HTTPException(400, "only finished, failed, or stuck jobs can be reprocessed")
+    reset_document_outputs(db, job.document_id)
     job.status = JobStatus.queued
     job.retry_count += 1
     job.error_message = None
@@ -375,23 +456,29 @@ def accept_proposal(proposal_id: int, db: Session = Depends(get_db)):
     if prop.type == ProposalType.lab_line:
         coll = payload.get("collection_date")
         coll_dt = datetime.fromisoformat(coll) if coll else datetime.utcnow()
-        enc = Encounter(
-            profile_id=prop.profile_id,
-            type=EncounterType.lab,
-            start=coll_dt,
-            reason="Accepted from review",
+        report = (
+            db.query(LabReport)
+            .filter(LabReport.source_document_id == prop.document_id, LabReport.profile_id == prop.profile_id)
+            .first()
         )
-        db.add(enc)
-        db.flush()
-        report = LabReport(
-            profile_id=prop.profile_id,
-            encounter_id=enc.id,
-            collection_time=coll_dt,
-            panel_name="Reviewed Panel",
-            source_document_id=prop.document_id,
-        )
-        db.add(report)
-        db.flush()
+        if not report:
+            enc = Encounter(
+                profile_id=prop.profile_id,
+                type=EncounterType.lab,
+                start=coll_dt,
+                reason="Accepted from review",
+            )
+            db.add(enc)
+            db.flush()
+            report = LabReport(
+                profile_id=prop.profile_id,
+                encounter_id=enc.id,
+                collection_time=coll_dt,
+                panel_name=payload.get("panel_name") or "Reviewed Panel",
+                source_document_id=prop.document_id,
+            )
+            db.add(report)
+            db.flush()
         value_num = None
         if is_plain_number(payload.get("value_text", "")):
             value_num = float(payload["value_text"])
@@ -400,10 +487,13 @@ def accept_proposal(proposal_id: int, db: Session = Depends(get_db)):
         norm_val, norm_unit = None, None
         if matched and value_num is not None:
             norm_val, norm_unit = compute_normalized(matched, value_num, payload.get("unit_original"))
-        flag = compute_abnormal_flag(value_num, payload.get("ref_low"), payload.get("ref_high"), None)
+        flag = compute_abnormal_flag(
+            value_num, payload.get("ref_low"), payload.get("ref_high"), payload.get("printed_flag")
+        )
+        seq = db.query(LabComponent).filter(LabComponent.lab_report_id == report.id).count()
         comp = LabComponent(
             lab_report_id=report.id,
-            sequence=0,
+            sequence=seq,
             original_name=payload.get("original_name", ""),
             value_text=payload.get("value_text", ""),
             value_numeric=value_num,
@@ -681,7 +771,22 @@ def remove_study(profile_id: int, study_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True, "removed_from_profile": True}
 
-from fastapi import Request
+@app.api_route("/orthanc/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy_orthanc(path: str, request: Request):
+    from .orthanc_client import ORTHANC_URL, ORTHANC_USER, ORTHANC_PASS
+    url = f"{ORTHANC_URL}/{path}"
+    if request.url.query:
+        url += f"?{request.url.query}"
+    body = await request.body()
+    async with httpx.AsyncClient(timeout=60.0, auth=(ORTHANC_USER, ORTHANC_PASS), follow_redirects=True) as client:
+        r = await client.request(
+            request.method,
+            url,
+            content=body or None,
+            headers={"Accept": request.headers.get("accept", "*/*")},
+        )
+    return Response(content=r.content, status_code=r.status_code, media_type=r.headers.get("content-type"))
+
 @app.get("/viewer/{study_instance_uid}")
 def viewer(study_instance_uid: str, request: Request, db: Session = Depends(get_db)):
     if not request.cookies.get("session"):

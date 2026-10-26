@@ -1,0 +1,13 @@
+{
+  "Name": "HouseholdPHR",
+  "AuthenticationEnabled": true,
+  "RegisteredUsers": {
+    "orthanc": "orthanc"
+  },
+  "RemoteAccessAllowed": true,
+  "SslEnabled": false,
+  "DicomWeb": {
+    "Enable": true,
+    "Root": "/dicom-web/"
+  }
+}

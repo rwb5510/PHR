@@ -1,0 +1,133 @@
+:root {
+  --paper: #f3efe6;
+  --card: #fffcf7;
+  --ink: #1c1915;
+  --muted: #5e584e;
+  --line: #e4dccf;
+  --green: #1f4b43;
+  --red: #8d3b32;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Public Sans", system-ui, sans-serif;
+}
+
+button, [role="button"], input[type="submit"] {
+  cursor: pointer;
+}
+
+h1, h2, .person-name {
+  font-family: "Newsreader", Georgia, serif;
+  font-weight: 500;
+}
+
+a { color: var(--green); }
+
+.shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 20px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+label {
+  display: block;
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+input, select, textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+button, .btn {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--green);
+  color: #fff;
+  font: inherit;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--green);
+  border: 1px solid var(--line);
+}
+
+button.danger { background: var(--red); }
+
+nav.section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 12px 0 20px;
+}
+
+nav.section-nav a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.badge {
+  background: var(--red);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+footer.disclaimer {
+  margin-top: 40px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.error { color: var(--red); }
+
+@media (max-width: 640px) {
+  .shell { padding: 12px; }
+}

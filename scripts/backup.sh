@@ -7,7 +7,7 @@ mkdir -p "$OUT"
 echo "Dumping Postgres..."
 docker compose exec -T db pg_dump -U phr phr > "$OUT/postgres.sql"
 echo "Copying document volume..."
-docker compose exec -T backend tar czf - /data/documents > "$OUT/documents.tar.gz" || true
+docker compose exec -T api tar czf - /data/documents > "$OUT/documents.tar.gz" || true
 echo "Copying Orthanc volume..."
 docker compose exec -T orthanc tar czf - /var/lib/orthanc/db > "$OUT/orthanc.tar.gz" || true
 echo "Backup written to $OUT"

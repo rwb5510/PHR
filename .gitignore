@@ -7,8 +7,8 @@ dist/
 .vite/
 *.log
 .env
-.env.*
 .env.local
+!.env.example
 .project_id
 .node_modules.lock
 

@@ -9,7 +9,7 @@ from .models import (
     Document, Job, JobStatus, Proposal, ProposalStatus, ProposalType,
     LabReport, LabComponent, Encounter, EncounterType, CanonicalAnalyte
 )
-from .extraction import extract_document_text, parse_lab_lines, find_collection_date
+from .extraction import extract_document_text, parse_lab_lines, find_collection_date, detect_panel_name
 from .ccda import is_clinical_document, parse_sections
 from .lab_matching import match_analyte, is_plain_number, compute_normalized, compute_abnormal_flag
 from .model_client import call_model, llm_autofile_enabled, get_model_mode
@@ -18,7 +18,7 @@ STORAGE_ROOT = os.getenv("STORAGE_ROOT", "/data/documents")
 
 def process_job(db: Session, job_id: int) -> None:
     job = db.query(Job).filter(Job.id == job_id).first()
-    if not job or job.status not in (JobStatus.queued, JobStatus.failed):
+    if not job or job.status not in (JobStatus.queued, JobStatus.failed, JobStatus.processing):
         return
     job.status = JobStatus.processing
     job.error_message = None
@@ -95,10 +95,10 @@ def process_job(db: Session, job_id: int) -> None:
         analytes = db.query(CanonicalAnalyte).all()
         lines = parse_lab_lines(text, analytes)
         coll_date = find_collection_date(text)
+        panel_name = detect_panel_name(text)
 
         auto_filed_any = False
         proposals_created = False
-        # Group auto-fileable lines
         auto_lines = []
         for line in lines:
             can_auto = (
@@ -110,7 +110,6 @@ def process_job(db: Session, job_id: int) -> None:
             if can_auto:
                 auto_lines.append(line)
             else:
-                # proposal
                 payload = {
                     "original_name": line["original_name"],
                     "value_text": line["value_text"],
@@ -118,7 +117,9 @@ def process_job(db: Session, job_id: int) -> None:
                     "ref_low": line["ref_low"],
                     "ref_high": line["ref_high"],
                     "ref_text": line["ref_text"],
+                    "printed_flag": line.get("printed_flag"),
                     "collection_date": coll_date.isoformat() if coll_date else None,
+                    "panel_name": panel_name,
                 }
                 prop = Proposal(
                     document_id=doc.id,
@@ -132,7 +133,6 @@ def process_job(db: Session, job_id: int) -> None:
                 proposals_created = True
 
         if auto_lines and coll_date:
-            # Create one lab report for the auto lines
             enc = Encounter(
                 profile_id=doc.profile_id,
                 type=EncounterType.lab,
@@ -146,7 +146,7 @@ def process_job(db: Session, job_id: int) -> None:
                 profile_id=doc.profile_id,
                 encounter_id=enc.id,
                 collection_time=coll_date,
-                panel_name="Imported Panel",
+                panel_name=panel_name,
                 source_document_id=doc.id,
             )
             db.add(report)
@@ -178,17 +178,41 @@ def process_job(db: Session, job_id: int) -> None:
 
         if auto_filed_any and not proposals_created:
             job.status = JobStatus.filed
+            job.error_message = None
         elif proposals_created:
             job.status = JobStatus.needs_review
+            job.error_message = None
         else:
-            # nothing found
             job.status = JobStatus.needs_review
+            job.error_message = (
+                "No lab results found. A result is a test name, a number, and a lab unit "
+                "(for example Sodium 140 mmol/L). Letterhead, phones, and comments are ignored."
+            )
         db.commit()
     except Exception as e:
         job.status = JobStatus.failed
         job.error_message = str(e)[:500]
         db.commit()
         raise
+
+def reset_document_outputs(db: Session, document_id: int) -> None:
+    """Drop proposals and auto-filed labs from a prior parse so the job can run again."""
+    db.query(Proposal).filter(Proposal.document_id == document_id).delete(synchronize_session=False)
+    reports = db.query(LabReport).filter(LabReport.source_document_id == document_id).all()
+    enc_ids = []
+    for report in reports:
+        db.query(LabComponent).filter(LabComponent.lab_report_id == report.id).delete(synchronize_session=False)
+        enc_ids.append(report.encounter_id)
+        db.delete(report)
+    db.flush()
+    for eid in enc_ids:
+        leftover = db.query(LabReport).filter(LabReport.encounter_id == eid).count()
+        if leftover:
+            continue
+        enc = db.query(Encounter).filter(Encounter.id == eid).first()
+        if enc and enc.reason in ("Imported lab", "Accepted from review"):
+            db.delete(enc)
+
 
 def claim_next_job(db: Session) -> int | None:
     """Postgres SKIP LOCKED claim. For SQLite tests, simple select."""

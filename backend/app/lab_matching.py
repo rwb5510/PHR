@@ -38,18 +38,50 @@ def is_plain_number(text: str) -> bool:
     except ValueError:
         return False
 
+_PAREN = re.compile(r"\s*[\(\[][^)\]]{0,40}[\)\]]")
+_SPECIMEN_SUFFIX = re.compile(
+    r",?\s*(?:serum|plasma|blood|whole blood|wb|fasting|random|venous|arterial)\s*$",
+    re.I,
+)
+
+
+def normalize_test_name(name: str) -> str:
+    """Strip specimen suffixes and parentheticals so 'Sodium, Serum' still matches sodium."""
+    n = re.sub(r"\s+", " ", (name or "").strip())
+    n = re.sub(r"\(\d{2,5}-\d\)", "", n)
+    n = _PAREN.sub("", n)
+    n = _SPECIMEN_SUFFIX.sub("", n)
+    n = n.strip(" ,;:-")
+    flipped = re.match(r"^(.+),\s*(total|free|direct|indirect|unconjugated)$", n, re.I)
+    if flipped:
+        n = f"{flipped.group(2)} {flipped.group(1)}"
+    return n.strip(" ,;:-")
+
+
 def match_analyte(original_name: str, analytes: list) -> Optional[object]:
     """Case-insensitive exact alias match to exactly one analyte. Returns analyte or None if ambiguous/none."""
     if not original_name:
         return None
-    name_l = original_name.strip().lower()
+    candidates = []
+    raw = original_name.strip().lower()
+    norm = normalize_test_name(original_name).lower()
+    for key in (raw, norm):
+        if key and key not in candidates:
+            candidates.append(key)
     matches = []
     for a in analytes:
-        aliases = [x.strip().lower() for x in a.aliases.split(",") if x.strip()]
-        if name_l in aliases or name_l == a.name.lower():
+        aliases = [x.strip().lower() for x in (a.aliases or "").split(",") if x.strip()]
+        names = set(aliases + [a.name.lower()])
+        if any(key in names for key in candidates):
             matches.append(a)
-    if len(matches) == 1:
-        return matches[0]
+    uniq = []
+    seen = set()
+    for m in matches:
+        if id(m) not in seen:
+            seen.add(id(m))
+            uniq.append(m)
+    if len(uniq) == 1:
+        return uniq[0]
     return None  # none or ambiguous
 
 def compute_normalized(analyte, value_numeric: Optional[float], unit_original: Optional[str]) -> Tuple[Optional[float], Optional[str]]:

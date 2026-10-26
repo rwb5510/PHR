@@ -5,28 +5,31 @@ from .models import CanonicalAnalyte
 
 def load_analytes(db=None):
     from .database import SessionLocal
-    seed_path = Path(__file__).resolve().parents[2] / "seed" / "analytes.csv"
-    if not seed_path.exists():
-        # fallback for test layout
-        seed_path = Path("/workspace/artifacts/seed/analytes.csv")
+    candidates = [
+        Path("/seed/analytes.csv"),
+        Path(__file__).resolve().parents[1] / "seed" / "analytes.csv",
+        Path(__file__).resolve().parents[2] / "seed" / "analytes.csv",
+        Path("/workspace/artifacts/seed/analytes.csv"),
+    ]
+    seed_path = next((p for p in candidates if p.exists()), candidates[0])
     close = False
     if db is None:
         db = SessionLocal()
         close = True
     try:
-        existing = db.query(CanonicalAnalyte).count()
-        if existing > 0:
-            return
         with open(seed_path, newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                a = CanonicalAnalyte(
-                    name=row["canonical"].strip(),
-                    loinc=row["loinc"].strip(),
-                    ucum=row["ucum"].strip(),
-                    aliases=row["aliases"].strip().lower()
-                )
-                db.add(a)
+                name = row["canonical"].strip()
+                aliases = row["aliases"].strip().lower()
+                ucum = row["ucum"].strip()
+                loinc = row["loinc"].strip()
+                existing_row = db.query(CanonicalAnalyte).filter(CanonicalAnalyte.name == name).first()
+                if existing_row:
+                    existing_row.aliases = aliases
+                    existing_row.ucum = ucum
+                else:
+                    db.add(CanonicalAnalyte(name=name, loinc=loinc, ucum=ucum, aliases=aliases))
         db.commit()
     finally:
         if close:
