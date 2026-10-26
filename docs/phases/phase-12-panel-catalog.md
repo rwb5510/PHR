@@ -1,7 +1,7 @@
 # Phase 12 — Panel catalog and data management
 
 **Status:** 📋 Planned
-**GitHub Issue:** [#pending](https://github.com/rwb5510/PHR/issues)
+**GitHub Issue:** [#4](https://github.com/rwb5510/PHR/issues/4)
 **Prerequisites:** none (improves Phase 11 matching and Phase 15 imports; neither is a hard blocker)
 **Blocks:** none
 

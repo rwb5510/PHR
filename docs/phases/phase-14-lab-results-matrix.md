@@ -1,7 +1,7 @@
 # Phase 14 — Lab results matrix over time
 
 **Status:** 📋 Planned
-**GitHub Issue:** [#pending](https://github.com/rwb5510/PHR/issues)
+**GitHub Issue:** [#6](https://github.com/rwb5510/PHR/issues/6)
 **Prerequisites:** none (Phase 11 makes multi-panel days easier to read; ship the matrix even if 11 is later)
 **Blocks:** none
 

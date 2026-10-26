@@ -1,7 +1,7 @@
 # Phase 9 — Review inbox source viewer
 
 **Status:** 📋 Planned
-**GitHub Issue:** [#pending](https://github.com/rwb5510/PHR/issues)
+**GitHub Issue:** [#1](https://github.com/rwb5510/PHR/issues/1)
 **Prerequisites:** none (build may land a small inline `Content-Disposition` change that Phase 10 later owns fully)
 **Blocks:** none (Phase 13 reuses this pane when present; it is not a hard blocker)
 

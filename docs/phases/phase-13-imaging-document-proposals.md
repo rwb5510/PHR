@@ -1,7 +1,7 @@
 # Phase 13 — Imaging-report proposals from documents
 
 **Status:** 📋 Planned
-**GitHub Issue:** [#pending](https://github.com/rwb5510/PHR/issues)
+**GitHub Issue:** [#5](https://github.com/rwb5510/PHR/issues/5)
 **Prerequisites:** none (reuse Phase 9’s inbox source pane when it exists; otherwise filename + extracted text)
 **Blocks:** none
 

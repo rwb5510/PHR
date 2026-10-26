@@ -1,7 +1,7 @@
 # Phase 11 — Multi-panel names on one document
 
 **Status:** 📋 Planned
-**GitHub Issue:** [#pending](https://github.com/rwb5510/PHR/issues)
+**GitHub Issue:** [#3](https://github.com/rwb5510/PHR/issues/3)
 **Prerequisites:** none (heuristic titles ship even if Phase 12’s catalog is later)
 **Blocks:** none (Phase 14 grouping is nicer when this exists; not a hard blocker)
 

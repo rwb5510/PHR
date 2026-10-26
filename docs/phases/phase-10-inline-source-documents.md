@@ -1,7 +1,7 @@
 # Phase 10 — In-browser source documents
 
 **Status:** 📋 Planned
-**GitHub Issue:** [#pending](https://github.com/rwb5510/PHR/issues)
+**GitHub Issue:** [#2](https://github.com/rwb5510/PHR/issues/2)
 **Prerequisites:** none (if Phase 9 already shipped an inline helper, extend it rather than forking a second file endpoint)
 **Blocks:** none
 

@@ -1,7 +1,7 @@
 # Phase 15 — Structured CSV / XLS / XLSX / JSON lab import
 
 **Status:** 📋 Planned
-**GitHub Issue:** [#pending](https://github.com/rwb5510/PHR/issues)
+**GitHub Issue:** [#7](https://github.com/rwb5510/PHR/issues/7)
 **Prerequisites:** none (Phase 12 catalog improves panel-name matching; Phase 11 grouping helps; both optional)
 **Blocks:** none
 
