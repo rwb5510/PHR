@@ -1,6 +1,6 @@
 # Phase 10 — In-browser source documents
 
-**Status:** 📋 Planned
+**Status:** ✅ Built
 **GitHub Issue:** [#2](https://github.com/rwb5510/PHR/issues/2)
 **Prerequisites:** none (if Phase 9 already shipped an inline helper, extend it rather than forking a second file endpoint)
 **Blocks:** none
@@ -102,7 +102,7 @@ No schema change. `create_all` unchanged.
    **Answer:** Browsers that cannot preview may download. That is acceptable. No Office previewer in this phase.
 
 2. Should `filename` stay on the Content-Disposition line when inline?
-   **Answer:** *(pending — default yes, so “Save as” from the PDF viewer still has the original name)*
+   **Answer:** Yes. `filename=` stays on the inline header so “Save as” from the PDF viewer keeps the original name.
 
 ---
 
@@ -117,11 +117,36 @@ No schema change. `create_all` unchanged.
 
 ## Definition of Done
 
-- [ ] `GET /documents/{id}/file` serves PDF, JPEG, PNG, and TXT with `Content-Disposition: inline` and a matching Content-Type.
-- [ ] Lab report “Open source document” opens a new tab that displays the PDF (no Save-As prompt for PDF).
-- [ ] Document list filename links and imaging source links behave the same.
-- [ ] Links remain `target="_blank"` `rel="noreferrer"` with no `download` attribute.
-- [ ] File GET is household-scoped from the session cookie.
-- [ ] CSV/XLSX may still download; no Office previewer.
-- [ ] CCD export remains an attachment.
-- [ ] Tests assert inline disposition and PDF content-type; existing Phase 4 source-open test still passes.
+- [x] `GET /documents/{id}/file` serves PDF, JPEG, PNG, and TXT with `Content-Disposition: inline` and a matching Content-Type.
+- [ ] Lab report “Open source document” opens a new tab that displays the PDF (no Save-As prompt for PDF). *(headers verified in tests; browser click-through still to do)*
+- [ ] Document list filename links and imaging source links behave the same. *(same URL and markup; browser click-through still to do)*
+- [x] Links remain `target="_blank"` `rel="noreferrer"` with no `download` attribute.
+- [x] File GET is household-scoped from the session cookie.
+- [x] CSV/XLSX may still download; no Office previewer.
+- [x] CCD export remains an attachment.
+- [x] Tests assert inline disposition and PDF content-type; existing Phase 4 source-open test still passes.
+
+---
+
+## What Shipped *(post-build — add only once Status is ✅ Built)*
+
+Extended the Phase 9 helper in `backend/app/documents.py` rather than adding a second file path. `resolve_media_type` now lets a known file suffix override the mime the client sent at upload, so a `.pdf` stored as `text/plain` or `application/octet-stream` is served as `application/pdf`. The suffix map gained `.csv` (`text/csv`), `.json` (`application/json`), `.xls`, and `.xlsx`; text types including CSV carry `charset=utf-8`. PDF, images, text, CSV, XML, and JSON are served `inline`; XLS/XLSX and unknown `application/octet-stream` stay `attachment`. `filename=` stays on the header in both cases. The frontend needed no change: the lab report, imaging, and document list links already use same-origin `/api/documents/{id}/file` with `target="_blank"` `rel="noreferrer"` and no `download` attribute.
+
+## Deviations from the Original Plan *(post-build)*
+
+- `.md` is served as `text/plain; charset=utf-8`, not `text/markdown`, because Chromium downloads `text/markdown` instead of showing it.
+- New assertions live in `backend/tests/test_phase10.py` instead of extending `test_phase4.py`; Phase 9's `test_file_served_inline_with_pdf_bytes` already covers the Phase 4 PDF upload path with inline + `application/pdf`.
+- CSV / XLS / XLSX / JSON are not accepted by the Documents upload UI yet (Phase 15), so no help-line copy was added.
+
+## Verification Performed *(post-build)*
+
+- In the API Docker image, per file: `test_phase10.py` 9 passed (PDF/PNG/JPEG/TXT/MD inline with matching type and original filename, lying client mime overridden by suffix, UTF-8 charset, full type matrix, CCD export still `attachment`); `test_phase9.py` 8 passed; `test_phase4.py` 8 passed; `test_phase3`, `test_phase5`, `test_phase6`, `test_lab_parse` pass.
+- `test_phase7.py::test_orthanc_ports_unpublished` fails in the image because it reads `../docker-compose.yml`, which is not copied in. Pre-existing.
+- Running all test files in one pytest process gives 16 failures on unmodified `main` as well (shared module state between test files). Pre-existing, not caused by this phase.
+- Not done: a headed-browser click-through confirming Chrome/Edge open the PDF and PNG in a new tab.
+
+## Deferred / Not Built *(post-build)*
+
+- Browser click-through of the three link sites.
+- Office previewer (out of scope by design).
+- TIFF may still download in Chromium; accepted risk.
