@@ -1,7 +1,8 @@
 """Document file serving and household-scoped lookups.
 
 Phase 9 lands inline Content-Disposition for previewable types so the review
-inbox iframe can render PDFs and images. Phase 10 extends the mime matrix.
+inbox iframe can render PDFs and images. Phase 10 extends the mime matrix and
+lets the file suffix override the client-sent mime. Spreadsheets download.
 """
 from __future__ import annotations
 
@@ -23,8 +24,13 @@ SUFFIX_TO_MIME = {
     ".tif": "image/tiff",
     ".tiff": "image/tiff",
     ".txt": "text/plain",
-    ".md": "text/markdown",
+    # Chromium downloads text/markdown; plain text shows in the tab.
+    ".md": "text/plain",
     ".xml": "application/xml",
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 
 INLINE_BASE_TYPES = {
@@ -34,8 +40,10 @@ INLINE_BASE_TYPES = {
     "image/tiff",
     "text/plain",
     "text/markdown",
+    "text/csv",
     "application/xml",
     "text/xml",
+    "application/json",
 }
 
 
@@ -76,14 +84,15 @@ def resolve_media_type(filename: str, stored_mime: Optional[str]) -> str:
     stored_base = stored.split(";")[0].strip().lower()
     suffix = os.path.splitext(filename or "")[1].lower()
     suffix_type = SUFFIX_TO_MIME.get(suffix)
-    if stored_base and stored_base != "application/octet-stream":
-        mime = stored
-    elif suffix_type:
+    # The suffix wins: upload stores whatever mime the client sent, which often lies.
+    if suffix_type:
         mime = suffix_type
+    elif stored_base:
+        mime = stored
     else:
-        mime = stored or "application/octet-stream"
+        mime = "application/octet-stream"
     base = mime.split(";")[0].strip().lower()
-    if base in ("text/plain", "text/markdown", "text/xml") and "charset=" not in mime.lower():
+    if base in ("text/plain", "text/markdown", "text/xml", "text/csv") and "charset=" not in mime.lower():
         return f"{base}; charset=utf-8"
     return mime
 

@@ -16,7 +16,7 @@ folder start at Phase 9.
 | File | Phase | Status |
 |---|---|---|
 | [phase-9-review-inbox-source.md](phase-9-review-inbox-source.md) | 9 — Review inbox source viewer | ✅ Built |
-| [phase-10-inline-source-documents.md](phase-10-inline-source-documents.md) | 10 — In-browser source documents | 📋 Planned |
+| [phase-10-inline-source-documents.md](phase-10-inline-source-documents.md) | 10 — In-browser source documents | ✅ Built |
 | [phase-11-multi-panel-names.md](phase-11-multi-panel-names.md) | 11 — Multi-panel names on one document | 📋 Planned |
 | [phase-12-panel-catalog.md](phase-12-panel-catalog.md) | 12 — Panel catalog and data management | 📋 Planned |
 | [phase-13-imaging-document-proposals.md](phase-13-imaging-document-proposals.md) | 13 — Imaging-report proposals from documents | 📋 Planned |
