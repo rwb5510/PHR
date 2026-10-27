@@ -1,6 +1,6 @@
 # Phase 9 — Review inbox source viewer
 
-**Status:** 📋 Planned
+**Status:** ✅ Built
 **GitHub Issue:** [#1](https://github.com/rwb5510/PHR/issues/1)
 **Prerequisites:** none (build may land a small inline `Content-Disposition` change that Phase 10 later owns fully)
 **Blocks:** none (Phase 13 reuses this pane when present; it is not a hard blocker)
@@ -138,7 +138,7 @@ Schema continues to come from SQLAlchemy `Base.metadata.create_all` on API boot.
    **Answer:** No. Phase 9 may land the minimal `Content-Disposition: inline` change (or a shared helper) so the iframe works. Phase 10 then covers all source links, mime mapping, and types that still download.
 
 3. PDF.js vs native iframe.
-   **Answer:** *(pending — default in Design: iframe + extracted-text highlight first; add PDF.js only if the iframe is unusable)*
+   **Answer:** Native iframe plus extracted-text highlight. PDF.js was not added.
 
 ---
 
@@ -154,11 +154,39 @@ Schema continues to come from SQLAlchemy `Base.metadata.create_all` on API boot.
 
 ## Definition of Done
 
-- [ ] Review inbox shows the original source (file and/or extracted text) beside the selected proposal.
-- [ ] The proposal `quote` is highlighted in extracted text when that substring exists, and the text pane scrolls to it.
-- [ ] PDFs and images open in the pane without a Save-As dialog (inline file response for those types).
-- [ ] Selecting another proposal updates the source pane; Accept/Reject still file or drop the candidate as today.
-- [ ] Document file/text GETs are household-scoped via the session; they do not trust client-sent household/user ids.
-- [ ] Layout is usable at ~390px width (stacked or tabbed, 44px targets).
-- [ ] No PDF editing. No OCR bounding-box storage.
-- [ ] New tests cover inline disposition and proposal `document_id`/`quote`; existing Phase 4 document tests still pass.
+- [x] Review inbox shows the original source (file and/or extracted text) beside the selected proposal.
+- [x] The proposal `quote` is highlighted in extracted text when that substring exists, and the text pane scrolls to it.
+- [x] PDFs and images open in the pane without a Save-As dialog (inline file response for those types).
+- [x] Selecting another proposal updates the source pane; Accept/Reject still file or drop the candidate as today.
+- [x] Document file/text GETs are household-scoped via the session; they do not trust client-sent household/user ids.
+- [x] Layout is usable at ~390px width (stacked or tabbed, 44px targets).
+- [x] No PDF editing. No OCR bounding-box storage.
+- [x] New tests cover inline disposition and proposal `document_id`/`quote`; existing Phase 4 document tests still pass.
+
+---
+
+## What Shipped *(post-build — add only once Status is ✅ Built)*
+
+Split review inbox: selectable proposal list and a source pane that loads the selected candidate’s original file and extracted text. The proposal `quote` is highlighted in extracted text (first case-insensitive match, including collapsed whitespace) and the text pane scrolls to the mark. PDFs use an iframe to `GET /documents/{id}/file`; images use `<img>`; text/XML highlight in place. Accept/Reject remain on the selected item and, after a decision, select the next pending line from the same document.
+
+Backend helper `backend/app/documents.py` serves previewable types with `Content-Disposition: inline` and a resolved media type. File and text GETs (and the proposal list) are household-scoped from the session; other-household ids return 404. `GET /documents/{id}/text` also returns `filename` and `mime_type`. File endpoint accepts HEAD so the pane can probe without downloading the body.
+
+## Deviations from the Original Plan *(post-build)*
+
+- PDF.js was not added; iframe plus extracted-text highlight was enough once inline disposition landed.
+- Filename and mime are returned on `/text` instead of adding a dedicated proposal-detail endpoint.
+- Proposal list and source pane scroll independently so a large inbox stays usable; mobile still stacks list above source with a sticky Accept/Reject row.
+- Phase 10 still owns the full download-vs-inline matrix for office types (xlsx/csv).
+
+## Verification Performed *(post-build)*
+
+- `pytest tests/test_phase9.py`: 8 passed (inline PDF bytes and disposition, quote in extracted text, `document_id`/`quote` on the list, missing file 404, other-household 404, profile-filtered list).
+- `pytest tests/test_phase4.py`: 8 passed against the new file/text helpers.
+- Live API through the Vite `/api` proxy: `GET /documents/{id}/file` returned `Content-Disposition: inline` and `%PDF` bytes; HEAD returned 200 after the route allowed it.
+- Vite served the new Inbox module (source pane copy present). A full click-through in a headed browser was not run in this session.
+
+## Deferred / Not Built *(post-build)*
+
+- PDF.js text-layer search on the rendered PDF.
+- Pixel OCR bounding boxes.
+- Full Phase 10 mime/disposition matrix for types that should still download.

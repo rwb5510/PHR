@@ -1,5 +1,5 @@
 import { Routes, Route, Link, useParams, useNavigate, Navigate } from 'react-router-dom'
-import { useState, useEffect, ChangeEvent, FormEvent } from 'react'
+import { useState, useEffect, useRef, ChangeEvent, FormEvent } from 'react'
 import { api, apiJson } from './api'
 
 function Disclaimer() {
@@ -554,45 +554,217 @@ function Settings() {
   )
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function findQuoteRange(text: string, quote: string): [number, number] | null {
+  const needle = quote.trim().replace(/\s+/g, ' ')
+  if (!needle || !text) return null
+  const direct = text.toLowerCase().indexOf(needle.toLowerCase())
+  if (direct >= 0) return [direct, direct + needle.length]
+  const parts = needle.split(' ').filter(Boolean).map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  if (!parts.length) return null
+  const re = new RegExp(parts.join('\\s+'), 'i')
+  const m = re.exec(text)
+  if (m) return [m.index, m.index + m[0].length]
+  return null
+}
+
+function fileKind(mime?: string, filename?: string): 'pdf' | 'image' | 'text' | 'other' {
+  const m = (mime || '').split(';')[0].trim().toLowerCase()
+  const ext = (filename || '').split('.').pop()?.toLowerCase() || ''
+  if (m === 'application/pdf' || ext === 'pdf') return 'pdf'
+  if (m.startsWith('image/') || ['jpg', 'jpeg', 'png', 'tif', 'tiff'].includes(ext)) return 'image'
+  if (m.startsWith('text/') || m.includes('xml') || ['txt', 'md', 'xml'].includes(ext)) return 'text'
+  return 'other'
+}
+
+function HighlightedExtract({ text, quote }: { text: string, quote?: string | null }) {
+  const preRef = useRef<HTMLPreElement>(null)
+  const needle = (quote || '').trim()
+  const range = findQuoteRange(text || '', quote || '')
+  let html = escapeHtml(text || '')
+  if (range) {
+    html =
+      escapeHtml(text.slice(0, range[0])) +
+      '<mark id="inbox-quote-mark">' +
+      escapeHtml(text.slice(range[0], range[1])) +
+      '</mark>' +
+      escapeHtml(text.slice(range[1]))
+  }
+  useEffect(() => {
+    preRef.current?.querySelector('#inbox-quote-mark')?.scrollIntoView({ block: 'center', inline: 'nearest' })
+  }, [text, quote])
+  return (
+    <>
+      {needle && !range && (
+        <p className="muted">Quote not found in extracted text: {needle}</p>
+      )}
+      <pre
+        ref={preRef}
+        className="inbox-extracted"
+        dangerouslySetInnerHTML={{ __html: html || '(no extracted text)' }}
+      />
+    </>
+  )
+}
+
 function Inbox() {
   const { id } = useParams()
   const [props, setProps] = useState<any[]>([])
-  const load = () => apiJson<any[]>(`/profiles/${id}/proposals`).then(setProps).catch(() => setProps([]))
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [docMeta, setDocMeta] = useState<{ filename?: string, mime_type?: string } | null>(null)
+  const [extracted, setExtracted] = useState('')
+  const [sourceError, setSourceError] = useState<string | null>(null)
+  const [fileMissing, setFileMissing] = useState(false)
+  const [loadingSource, setLoadingSource] = useState(false)
+  const [textOpen, setTextOpen] = useState(true)
+
+  const selected = props.find(p => p.id === selectedId) || null
+
+  const load = async (opts?: { afterId?: number, documentId?: number }) => {
+    const rows = await apiJson<any[]>(`/profiles/${id}/proposals`).catch(() => [] as any[])
+    setProps(rows)
+    setSelectedId(prev => {
+      if (opts?.afterId != null) {
+        const same = rows.filter(r => r.document_id === opts.documentId)
+        if (same.length) return same[0].id
+        return rows[0]?.id ?? null
+      }
+      if (prev && rows.some(r => r.id === prev)) return prev
+      return prev
+    })
+  }
+
   useEffect(() => { load() }, [id])
-  const accept = async (pid: number) => {
-    await api(`/proposals/${pid}/accept`, { method: 'POST' })
-    load()
+
+  useEffect(() => {
+    if (!selected?.document_id) {
+      setExtracted('')
+      setDocMeta(null)
+      setSourceError(null)
+      setFileMissing(false)
+      setLoadingSource(false)
+      return
+    }
+    const docId = selected.document_id
+    let cancelled = false
+    setLoadingSource(true)
+    setSourceError(null)
+    setFileMissing(false)
+    ;(async () => {
+      const [textRes, fileRes] = await Promise.all([
+        api(`/documents/${docId}/text`),
+        api(`/documents/${docId}/file`, { method: 'HEAD' }),
+      ])
+      if (cancelled) return
+      if (textRes.status === 404) {
+        setExtracted('')
+        setDocMeta(null)
+        setSourceError('Original file is not on disk.')
+      } else if (!textRes.ok) {
+        setExtracted('')
+        setDocMeta(null)
+        setSourceError('Could not load extracted text.')
+      } else {
+        const body = await textRes.json().catch(() => ({}))
+        setExtracted(body.extracted_text || '')
+        setDocMeta({ filename: body.filename, mime_type: body.mime_type })
+      }
+      if (fileRes.status === 404) {
+        setFileMissing(true)
+        setSourceError('Original file is not on disk.')
+      } else if (fileRes.status === 405 || fileRes.status === 501) {
+        setFileMissing(false)
+      } else if (!fileRes.ok) {
+        setFileMissing(true)
+      } else {
+        setFileMissing(false)
+      }
+      setLoadingSource(false)
+    })()
+    return () => { cancelled = true }
+  }, [selected?.document_id, id])
+
+  const decide = async (pid: number, action: 'accept' | 'reject') => {
+    const current = props.find(p => p.id === pid)
+    await api(`/proposals/${pid}/${action}`, { method: 'POST' })
+    await load({ afterId: pid, documentId: current?.document_id })
   }
-  const reject = async (pid: number) => {
-    await api(`/proposals/${pid}/reject`, { method: 'POST' })
-    load()
-  }
+
+  const kind = fileKind(docMeta?.mime_type, docMeta?.filename)
+  const fileUrl = selected?.document_id ? `/api/documents/${selected.document_id}/file` : ''
+
   return (
-    <div className="card">
+    <div className="card inbox-card">
       <h2>Review Inbox</h2>
       <p>These are candidate chart rows. Lab lines here did not auto-file (unknown test name, missing collection date, or a non-numeric value). Letterhead is not listed.</p>
       {props.length === 0 && <p>No pending proposals.</p>}
-      <ul>
-        {props.map(p => (
-          <li key={p.id} style={{ marginBottom: 16 }}>
-            {p.type === 'lab_line' ? (
-              <div>
-                <strong>{p.payload?.original_name}</strong>
-                {' '}{p.payload?.value_text} {p.payload?.unit_original || ''}
-                {p.payload?.ref_text ? ` (${p.payload.ref_text})` : ''}
-                <div style={{ color: 'var(--muted)', fontSize: 13 }}>{p.quote}</div>
+      <div className="inbox-layout">
+        <ul className="inbox-list">
+          {props.map(p => (
+            <li key={p.id}>
+              <button
+                type="button"
+                className={'inbox-item' + (p.id === selectedId ? ' selected' : '')}
+                onClick={() => setSelectedId(p.id)}
+              >
+                {p.type === 'lab_line' ? (
+                  <span>
+                    <strong>{p.payload?.original_name}</strong>
+                    {' '}{p.payload?.value_text} {p.payload?.unit_original || ''}
+                    {p.payload?.ref_text ? ` (${p.payload.ref_text})` : ''}
+                    <span className="muted inbox-quote">{p.quote}</span>
+                  </span>
+                ) : (
+                  <span>{p.type}: {p.quote || JSON.stringify(p.payload)}</span>
+                )}
+                {p.payload?.dob_mismatch && <span className="error"> {p.payload.dob_mismatch}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="inbox-source">
+          {!selected && <p className="muted">Select a candidate to see the original page.</p>}
+          {selected && loadingSource && <p className="muted">Loading source…</p>}
+          {selected && !loadingSource && (
+            <>
+              <div className="inbox-source-head">
+                <strong>{docMeta?.filename || `Document ${selected.document_id}`}</strong>
+                {docMeta?.mime_type && <span className="muted"> {docMeta.mime_type}</span>}
               </div>
-            ) : (
-              <div>{p.type}: {p.quote || JSON.stringify(p.payload)}</div>
-            )}
-            {p.payload?.dob_mismatch && <span className="error"> {p.payload.dob_mismatch}</span>}
-            <div className="row">
-              <button onClick={() => accept(p.id)}>Accept</button>
-              <button className="secondary" onClick={() => reject(p.id)}>Reject</button>
-            </div>
-          </li>
-        ))}
-      </ul>
+              {fileMissing && <p className="muted">Original file is not on disk.</p>}
+              {!fileMissing && kind === 'pdf' && (
+                <iframe title="Source document" className="inbox-frame" src={fileUrl} />
+              )}
+              {!fileMissing && kind === 'image' && (
+                <img className="inbox-frame" alt={docMeta?.filename || 'Source document'} src={fileUrl} />
+              )}
+              {!fileMissing && kind === 'text' && !extracted && (
+                <iframe title="Source document" className="inbox-frame inbox-frame-text" src={fileUrl} />
+              )}
+              {(kind === 'pdf' || kind === 'image') && (
+                <button type="button" className="secondary inbox-toggle" onClick={() => setTextOpen(o => !o)}>
+                  {textOpen ? 'Hide extracted text' : 'Show extracted text'}
+                </button>
+              )}
+              {(kind === 'text' || kind === 'other' || textOpen) && (
+                <HighlightedExtract text={extracted} quote={selected.quote} />
+              )}
+              {sourceError && kind !== 'pdf' && kind !== 'image' && <p className="muted">{sourceError}</p>}
+              <div className="inbox-actions">
+                <button type="button" onClick={() => decide(selected.id, 'accept')}>Accept</button>
+                <button type="button" className="danger" onClick={() => decide(selected.id, 'reject')}>Reject</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
