@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Request
-from fastapi.responses import FileResponse, Response, JSONResponse
+from fastapi.responses import Response, JSONResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, date
@@ -37,6 +37,12 @@ from .ccda import build_ccd
 from .model_client import get_settings, update_settings, get_model_mode
 from .auth import AUTH_DISABLED, bootstrap, load_session, router as auth_router
 from .chart_routes import router as chart_router
+from .documents import (
+    document_in_household,
+    file_response_for_document,
+    profile_in_household,
+    session_household_id,
+)
 
 app = FastAPI(title="Household PHR")
 app.include_router(auth_router)
@@ -383,22 +389,26 @@ def list_documents(profile_id: int, db: Session = Depends(get_db)):
         })
     return out
 
-@app.get("/documents/{document_id}/file")
-def get_document_file(document_id: int, db: Session = Depends(get_db)):
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(404)
+@app.api_route("/documents/{document_id}/file", methods=["GET", "HEAD"])
+def get_document_file(document_id: int, request: Request, db: Session = Depends(get_db)):
+    hid = session_household_id(request, db)
+    doc = document_in_household(db, document_id, hid)
     path = os.path.join(STORAGE_ROOT, doc.storage_path)
     if not os.path.exists(path):
         raise HTTPException(404, "file missing")
-    return FileResponse(path, filename=doc.filename, media_type=doc.mime_type)
+    return file_response_for_document(path, doc)
 
 @app.get("/documents/{document_id}/text")
-def get_document_text(document_id: int, db: Session = Depends(get_db)):
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(404)
-    return {"extracted_text": doc.extracted_text, "ocr_used": doc.ocr_used, "page_count": doc.page_count}
+def get_document_text(document_id: int, request: Request, db: Session = Depends(get_db)):
+    hid = session_household_id(request, db)
+    doc = document_in_household(db, document_id, hid)
+    return {
+        "extracted_text": doc.extracted_text,
+        "ocr_used": doc.ocr_used,
+        "page_count": doc.page_count,
+        "filename": doc.filename,
+        "mime_type": doc.mime_type,
+    }
 
 @app.post("/jobs/{job_id}/process")
 def process_job_endpoint(job_id: int, db: Session = Depends(get_db)):
@@ -427,7 +437,9 @@ def retry_job(job_id: int, db: Session = Depends(get_db)):
     return {"status": "queued"}
 
 @app.get("/profiles/{profile_id}/proposals")
-def list_proposals(profile_id: int, db: Session = Depends(get_db)):
+def list_proposals(profile_id: int, request: Request, db: Session = Depends(get_db)):
+    hid = session_household_id(request, db)
+    profile_in_household(db, profile_id, hid)
     props = db.query(Proposal).filter(
         Proposal.profile_id == profile_id,
         Proposal.status == ProposalStatus.pending
