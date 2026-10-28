@@ -140,6 +140,38 @@ class CanonicalAnalyte(Base):
     ucum = Column(String, nullable=False)
     aliases = Column(Text, nullable=False)
 
+class PanelDefinition(Base):
+    __tablename__ = "panel_definition"
+    id = Column(Integer, primary_key=True)
+    household_id = Column(Integer, ForeignKey("household.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    aliases = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    components = relationship(
+        "PanelComponentDefinition",
+        back_populates="panel",
+        cascade="all, delete-orphan",
+        order_by="PanelComponentDefinition.sequence",
+    )
+    __table_args__ = (
+        UniqueConstraint("household_id", "name", name="uq_panel_definition_household_name"),
+    )
+
+
+class PanelComponentDefinition(Base):
+    __tablename__ = "panel_component_definition"
+    id = Column(Integer, primary_key=True)
+    panel_definition_id = Column(Integer, ForeignKey("panel_definition.id"), nullable=False)
+    sequence = Column(Integer, nullable=False)
+    original_alias = Column(String, nullable=False)
+    canonical_analyte_id = Column(Integer, ForeignKey("canonical_analyte.id"), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    panel = relationship("PanelDefinition", back_populates="components")
+    canonical = relationship("CanonicalAnalyte")
+
 class LabReport(Base):
     __tablename__ = "lab_report"
     id = Column(Integer, primary_key=True)

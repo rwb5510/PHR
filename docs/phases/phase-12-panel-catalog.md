@@ -1,6 +1,6 @@
 # Phase 12 — Panel catalog and data management
 
-**Status:** 📋 Planned
+**Status:** ✅ Built
 **GitHub Issue:** [#4](https://github.com/rwb5510/PHR/issues/4)
 **Prerequisites:** none (improves Phase 11 matching and Phase 15 imports; neither is a hard blocker)
 **Blocks:** none
@@ -191,11 +191,39 @@ Phase 15 structured import can map a `panel_name` column through the same aliase
 
 ## Definition of Done
 
-- [ ] Data management is reachable from the household chrome (not a profile tab) and lists panel definitions.
-- [ ] CSV and JSON templates download; upload merge/replace updates the catalog only.
-- [ ] Starter CMP, BMP, CBC, Lipid Panel, Hemoglobin A1c, TSH exist without adding LOINC codes.
-- [ ] Unknown component aliases stay unmatched and do not auto-file.
-- [ ] Catalog rows are scoped to the session household; no client-sent household id.
-- [ ] Filed `LabReport` rows survive a catalog replace.
-- [ ] Tests cover seed, merge, unmatched canonical names, and “no new analytes.”
-- [ ] Mobile layout is usable; paper-chart tokens only.
+- [x] Data management is reachable from the household chrome (not a profile tab) and lists panel definitions.
+- [x] CSV and JSON templates download; upload merge/replace updates the catalog only.
+- [x] Starter CMP, BMP, CBC, Lipid Panel, Hemoglobin A1c, TSH exist without adding LOINC codes.
+- [x] Unknown component aliases stay unmatched and do not auto-file.
+- [x] Catalog rows are scoped to the session household; no client-sent household id.
+- [x] Filed `LabReport` rows survive a catalog replace.
+- [x] Tests cover seed, merge, unmatched canonical names, and “no new analytes.”
+- [x] Mobile layout is usable; paper-chart tokens only.
+
+---
+
+## What Shipped *(post-build — add only once Status is ✅ Built)*
+
+Household-scoped **Data management** (`/data`) in the top bar next to Settings. First visit (or API startup for empty households) seeds CMP, BMP, CBC, Lipid Panel, Hemoglobin A1c, and TSH from `seed/analytes.csv` aliases. Owners download CSV/JSON templates, upload merge (default) or replace-all, and remove a catalog row. `canonical_analyte` is never created from an upload; unmatched component aliases stay unmatched.
+
+`panel_definition` / `panel_component_definition` are household-owned. Session `household_id` only. Parser `extra_patterns` now come from this household's aliases so a taught title (e.g. `QUEST SUPER CMP`) names the filed report.
+
+## Deviations from the Original Plan *(post-build)*
+
+- Catalog lives in `backend/app/panel_catalog.py` rather than growing `main.py`.
+- Templates always contain the starter catalog as examples, not the household's current rows (export-current was not in the plan).
+- Panel aliases shorter than 3 characters, and aliases that collide with a multi-test analyte name, are skipped when building parse-time header patterns.
+- Optional `created_by` on catalog rows was left off.
+
+## Verification Performed *(post-build)*
+
+- Docker API image, each `tests/test_*.py` in its own process: `test_phase12.py` 13 passed (seed, merge Iron/ferritin unmatched, replace keeps `LabReport`, CSV headers, JSON template, MagicEnzyme creates no analyte, CMP header regression, catalog alias used at parse, ferritin stays in inbox, other-household hidden, auth-on 401, delete keeps filed labs, CSV upload). `test_lab_parse` / `test_phase3`–`6` / `9`–`11` passed. `test_phase7::test_orthanc_ports_unpublished` still fails in the API image because `docker-compose.yml` is not copied in; CI runs from the repo tree.
+- Frontend `tsc && vite build` clean in the worktree.
+- Live preview on the already-running `:5173` stack was not used (that compose project is another checkout). Click-through of `/data` waits on a rebuild from this branch.
+
+## Deferred / Not Built *(post-build)*
+
+- Per-profile catalogs.
+- Editing `seed/analytes.csv` or adding analyte aliases from this screen.
+- Current-catalog export (templates are the starter examples).
+- Extra LOINC / invented ranges.
