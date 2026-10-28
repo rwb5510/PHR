@@ -458,10 +458,19 @@ def list_proposals(profile_id: int, request: Request, db: Session = Depends(get_
         })
     return out
 
+def _proposal_in_household(db: Session, proposal_id: int, household_id: Optional[int]) -> Proposal:
+    q = db.query(Proposal).join(Profile, Proposal.profile_id == Profile.id).filter(Proposal.id == proposal_id)
+    if household_id is not None:
+        q = q.filter(Profile.household_id == household_id)
+    prop = q.first()
+    if not prop:
+        raise HTTPException(404)
+    return prop
+
 @app.post("/proposals/{proposal_id}/accept")
-def accept_proposal(proposal_id: int, db: Session = Depends(get_db)):
-    prop = db.query(Proposal).filter(Proposal.id == proposal_id).first()
-    if not prop or prop.status != ProposalStatus.pending:
+def accept_proposal(proposal_id: int, request: Request, db: Session = Depends(get_db)):
+    prop = _proposal_in_household(db, proposal_id, session_household_id(request, db))
+    if prop.status != ProposalStatus.pending:
         raise HTTPException(404)
     payload = json.loads(prop.payload)
     # For lab_line, create report + component if not already
@@ -533,6 +542,9 @@ def accept_proposal(proposal_id: int, db: Session = Depends(get_db)):
             normalized_unit=norm_unit,
         )
         db.add(comp)
+    elif prop.type == ProposalType.imaging_report:
+        # Profile comes from the proposal row, never from the payload.
+        _file_imaging_report(db, prop.profile_id, prop.document_id, payload, "Accepted from review")
     elif prop.type == ProposalType.problem:
         db.add(Problem(profile_id=prop.profile_id, display_name=payload.get("display_name", ""), source_document_id=prop.document_id))
     elif prop.type == ProposalType.allergy:
@@ -556,10 +568,9 @@ def accept_proposal(proposal_id: int, db: Session = Depends(get_db)):
     return {"ok": True, "status": "accepted"}
 
 @app.post("/proposals/{proposal_id}/reject")
-def reject_proposal(proposal_id: int, db: Session = Depends(get_db)):
-    prop = db.query(Proposal).filter(Proposal.id == proposal_id).first()
-    if not prop:
-        raise HTTPException(404)
+def reject_proposal(proposal_id: int, request: Request, db: Session = Depends(get_db)):
+    # The source document stays; only the candidate is dropped.
+    prop = _proposal_in_household(db, proposal_id, session_household_id(request, db))
     prop.status = ProposalStatus.rejected
     db.commit()
     return {"ok": True, "status": "rejected"}
@@ -634,32 +645,49 @@ def export_ccd(profile_id: int, db: Session = Depends(get_db)):
     )
     xml = build_ccd(profile, problems, allergies, medications, labs)
     return Response(content=xml, media_type="application/xml", headers={"Content-Disposition": "attachment; filename=ccd.xml"})
-def create_imaging_from_document(document_id: int, body: dict, db: Session = Depends(get_db)):
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(404)
+
+def _parse_performed(value) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        raise HTTPException(400, "performed_at must be an ISO date")
+
+def _file_imaging_report(db: Session, profile_id: int, document_id: Optional[int], body: dict, reason: str) -> ImagingReport:
+    """Imaging encounter + report pointing at the source document. No DICOM needed."""
+    performed = _parse_performed(body.get("performed_at")) or datetime.utcnow()
     enc = Encounter(
-        profile_id=doc.profile_id,
+        profile_id=profile_id,
         type=EncounterType.imaging,
-        start=datetime.fromisoformat(body.get("performed_at")) if body.get("performed_at") else datetime.utcnow(),
-        reason="Manual imaging from document",
+        start=performed,
+        reason=reason,
+        facility_name=body.get("facility"),
     )
     db.add(enc)
     db.flush()
     img = ImagingReport(
-        profile_id=doc.profile_id,
+        profile_id=profile_id,
         encounter_id=enc.id,
-        modality=body.get("modality", "OT"),
+        modality=(body.get("modality") or "OT").upper(),
         body_site=body.get("body_site"),
         laterality=body.get("laterality"),
-        performed_at=enc.start,
+        performed_at=performed,
         findings=body.get("findings"),
         impression=body.get("impression"),
         facility=body.get("facility"),
         reporting_provider=body.get("reporting_provider"),
-        source_document_id=doc.id,
+        source_document_id=document_id,
     )
     db.add(img)
+    db.flush()
+    return img
+
+@app.post("/documents/{document_id}/create-imaging")
+def create_imaging_from_document(document_id: int, body: dict, request: Request, db: Session = Depends(get_db)):
+    """Manual imaging report from a stored document, with or without proposals."""
+    doc = document_in_household(db, document_id, session_household_id(request, db))
+    img = _file_imaging_report(db, doc.profile_id, doc.id, body, "Manual imaging from document")
     db.commit()
     db.refresh(img)
     return {"imaging_report_id": img.id, "source_document_id": doc.id}
