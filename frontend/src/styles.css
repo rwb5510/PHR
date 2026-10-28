@@ -283,3 +283,61 @@ table.components td {
   .shell { padding: 12px; }
   .catalog-actions { flex-direction: column; align-items: stretch; }
 }
+
+.labs-wide {
+  max-width: none;
+}
+
+.matrix-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -4px 16px;
+}
+
+table.lab-matrix {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+table.lab-matrix th,
+table.lab-matrix td {
+  min-width: 72px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+table.lab-matrix th:first-child,
+table.lab-matrix td:first-child {
+  position: sticky;
+  left: 0;
+  background: var(--card);
+  z-index: 1;
+  min-width: 140px;
+  box-shadow: 4px 0 8px -6px rgba(28, 25, 21, 0.35);
+}
+
+table.lab-matrix th:first-child a,
+table.lab-matrix td a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  text-decoration: none;
+}
+
+table.lab-matrix td a {
+  color: inherit;
+}
+
+.matrix-flag-lh {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.matrix-flag-n {
+  color: var(--muted);
+}

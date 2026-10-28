@@ -1,6 +1,6 @@
 # Phase 14 — Lab results matrix over time
 
-**Status:** 📋 Planned
+**Status:** 🔨 In Progress — started 2026-10-27
 **GitHub Issue:** [#6](https://github.com/rwb5510/PHR/issues/6)
 **Prerequisites:** none (Phase 11 makes multi-panel days easier to read; ship the matrix even if 11 is later)
 **Blocks:** none
@@ -149,10 +149,10 @@ Frontend is not unit-tested in this repo; do not add a Jest stack unless one exi
    **Answer:** Matrix is primary; TrendView remains a drill-in; remove featured Sodium nav. (Interview.)
 
 2. Keep the per-report list on the Labs page.
-   **Answer:** *(pending — default yes, below the matrix)*
+   **Answer:** Yes, below the matrix.
 
 3. Two values for the same analyte on the same date.
-   **Answer:** *(pending — default: latest report id wins, tooltip lists others)*
+   **Answer:** Latest `reported_time` (then higher `lab_report.id`) wins; `also` lists the others.
 
 ---
 
@@ -167,11 +167,11 @@ Frontend is not unit-tested in this repo; do not add a Jest stack unless one exi
 
 ## Definition of Done
 
-- [ ] Labs primary view is a date-column matrix of components, not a Sodium-only page.
-- [ ] “Sodium trend” is removed from profile nav; TrendView still works when opened from a row.
-- [ ] Clicking a canonical row opens that analyte’s trend; clicking a cell opens the lab report.
-- [ ] Unmatched names have their own rows (and a drill-in that is not Sodium).
-- [ ] L/H cells use the red token; units visible; mixed units are not plotted on one axis.
-- [ ] Phone: horizontal scroll + sticky first column.
-- [ ] Matrix API is profile-scoped from the session household.
-- [ ] Tests cover two dates, unmatched rows, and profile isolation; Phase 3 trend tests still pass.
+- [x] Labs primary view is a date-column matrix of components, not a Sodium-only page.
+- [x] “Sodium trend” is removed from profile nav; TrendView still works when opened from a row.
+- [x] Clicking a canonical row opens that analyte’s trend; clicking a cell opens the lab report.
+- [x] Unmatched names have their own rows (and a drill-in that is not Sodium).
+- [x] L/H cells use the red token; units visible; mixed units are not plotted on one axis.
+- [x] Phone: horizontal scroll + sticky first column.
+- [x] Matrix API is profile-scoped from the session household.
+- [x] Tests cover two dates, unmatched rows, and profile isolation; Phase 3 trend tests still pass.
