@@ -42,14 +42,17 @@ from .panel_catalog import router as panel_catalog_router, seed_all_empty_househ
 from .documents import (
     document_in_household,
     file_response_for_document,
+    mime_for_upload,
     profile_in_household,
     session_household_id,
 )
+from .structured_lab import router as lab_import_router
 
 app = FastAPI(title="Household PHR")
 app.include_router(auth_router)
 app.include_router(chart_router)
 app.include_router(panel_catalog_router)
+app.include_router(lab_import_router)
 
 STORAGE_ROOT = os.getenv("STORAGE_ROOT", "/data/documents")
 os.makedirs(STORAGE_ROOT, exist_ok=True)
@@ -368,10 +371,12 @@ async def upload_document(
     os.makedirs(os.path.dirname(full), exist_ok=True)
     with open(full, "wb") as f:
         f.write(data)
+    filename = file.filename or "upload"
+    mime_type = mime_for_upload(filename, file.content_type)
     doc = Document(
         profile_id=profile_id,
-        filename=file.filename or "upload",
-        mime_type=file.content_type or "application/octet-stream",
+        filename=filename,
+        mime_type=mime_type,
         sha256=sha,
         size_bytes=len(data),
         storage_path=rel_path,

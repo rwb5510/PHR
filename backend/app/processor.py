@@ -11,12 +11,139 @@ from .models import (
 )
 from .extraction import extract_document_text, parse_lab_lines, find_collection_date, DEFAULT_PANEL_NAME
 from .document_class import classify_document, extract_imaging_reports, filename_modality
-from .panel_catalog import extra_patterns_for_household
+from .panel_catalog import extra_patterns_for_household, resolve_printed_panel_name
 from .ccda import is_clinical_document, parse_sections
 from .lab_matching import match_analyte, is_plain_number, compute_normalized, compute_abnormal_flag
 from .model_client import call_model, llm_autofile_enabled, get_model_mode
+from .structured_lab import (
+    STRUCTURED_MISS_MESSAGE,
+    WIDE_TEMPLATE_MESSAGE,
+    XLS_STORE_MESSAGE,
+    is_legacy_xls,
+    is_tabular_upload,
+    looks_like_structured_lab,
+    looks_like_wide_lab,
+    parse_structured_lab,
+)
 
 STORAGE_ROOT = os.getenv("STORAGE_ROOT", "/data/documents")
+
+
+def _add_components(db: Session, report: LabReport, lines: list, analytes: list) -> None:
+    for seq, line in enumerate(lines):
+        value_num = float(line["value_text"]) if line["plain_number"] else None
+        matched = next((a for a in analytes if a.id == line["analyte_id"]), None)
+        norm_val, norm_unit = None, None
+        if matched and value_num is not None:
+            norm_val, norm_unit = compute_normalized(matched, value_num, line["unit_original"])
+        flag = compute_abnormal_flag(value_num, line["ref_low"], line["ref_high"], line.get("printed_flag"))
+        db.add(LabComponent(
+            lab_report_id=report.id,
+            sequence=seq,
+            original_name=line["original_name"],
+            value_text=line["value_text"],
+            value_numeric=value_num,
+            unit_original=line["unit_original"],
+            ref_low=line["ref_low"],
+            ref_high=line["ref_high"],
+            ref_text=line["ref_text"],
+            abnormal_flag=flag,
+            canonical_analyte_id=matched.id if matched else None,
+            normalized_value=norm_val,
+            normalized_unit=norm_unit,
+        ))
+
+
+def _file_structured_rows(db: Session, job: Job, doc: Document, rows: list, analytes: list, household_id) -> None:
+    auto_groups: dict = {}
+    group_order: list = []
+    proposals_created = False
+    for row in rows:
+        panel_name = resolve_printed_panel_name(db, household_id, row.get("panel_name") or "") or DEFAULT_PANEL_NAME
+        row = dict(row)
+        row["panel_name"] = panel_name
+        coll = row.get("collection_date")
+        can_auto = (
+            row["matched"]
+            and row["plain_number"]
+            and row["unit_original"]
+            and coll is not None
+        )
+        if can_auto:
+            key = (coll.strftime("%Y-%m-%d"), panel_name, row.get("performing_lab") or "")
+            if key not in auto_groups:
+                auto_groups[key] = []
+                group_order.append(key)
+            auto_groups[key].append(row)
+        else:
+            payload = {
+                "original_name": row["original_name"],
+                "value_text": row["value_text"],
+                "unit_original": row["unit_original"],
+                "ref_low": row["ref_low"],
+                "ref_high": row["ref_high"],
+                "ref_text": row["ref_text"],
+                "printed_flag": row.get("printed_flag"),
+                "collection_date": coll.isoformat() if coll else None,
+                "panel_name": panel_name,
+                "performing_lab": row.get("performing_lab"),
+                "specimen": row.get("specimen"),
+            }
+            db.add(Proposal(
+                document_id=doc.id,
+                profile_id=doc.profile_id,
+                type=ProposalType.lab_line,
+                status=ProposalStatus.pending,
+                payload=json.dumps(payload),
+                quote=row.get("quote"),
+            ))
+            proposals_created = True
+
+    enc_by: dict = {}
+    auto_filed_any = False
+    for key in group_order:
+        date_s, panel_name, lab = key
+        lines = auto_groups[key]
+        first = lines[0]
+        coll = first["collection_date"]
+        enc_key = (date_s, lab)
+        if enc_key not in enc_by:
+            enc = Encounter(
+                profile_id=doc.profile_id,
+                type=EncounterType.lab,
+                start=coll,
+                reason="Imported lab",
+                facility_name=lab or None,
+            )
+            db.add(enc)
+            db.flush()
+            enc_by[enc_key] = enc
+        enc = enc_by[enc_key]
+        report = LabReport(
+            profile_id=doc.profile_id,
+            encounter_id=enc.id,
+            collection_time=coll,
+            panel_name=panel_name,
+            performing_lab=first.get("performing_lab"),
+            specimen=first.get("specimen"),
+            source_document_id=doc.id,
+        )
+        db.add(report)
+        db.flush()
+        _add_components(db, report, lines, analytes)
+        auto_filed_any = True
+
+    if auto_filed_any and not proposals_created:
+        job.status = JobStatus.filed
+        job.error_message = None
+    elif proposals_created:
+        job.status = JobStatus.needs_review
+        job.error_message = None
+    else:
+        job.status = JobStatus.needs_review
+        job.error_message = STRUCTURED_MISS_MESSAGE
+    db.commit()
+
 
 def process_job(db: Session, job_id: int) -> None:
     job = db.query(Job).filter(Job.id == job_id).first()
@@ -97,6 +224,20 @@ def process_job(db: Session, job_id: int) -> None:
         analytes = db.query(CanonicalAnalyte).all()
         hid = doc.profile.household_id if doc.profile else None
         extra = extra_patterns_for_household(db, hid)
+        if looks_like_structured_lab(doc.filename, doc.mime_type, data):
+            rows = parse_structured_lab(data, doc.filename, analytes)
+            _file_structured_rows(db, job, doc, rows, analytes, hid)
+            return
+        if looks_like_wide_lab(doc.filename, doc.mime_type, data):
+            job.status = JobStatus.needs_review
+            job.error_message = WIDE_TEMPLATE_MESSAGE
+            db.commit()
+            return
+        if is_legacy_xls(doc.filename, doc.mime_type):
+            job.status = JobStatus.needs_review
+            job.error_message = XLS_STORE_MESSAGE
+            db.commit()
+            return
         lines = parse_lab_lines(text, analytes, extra)
         coll_date = find_collection_date(text)
 
@@ -212,11 +353,14 @@ def process_job(db: Session, job_id: int) -> None:
             )
         else:
             job.status = JobStatus.needs_review
-            job.error_message = (
-                "No lab lines and no imaging report were detected. A lab result is a test name, "
-                "a number, and a lab unit (for example Sodium 140 mmol/L); an imaging report has "
-                "Findings or Impression headings. Letterhead, phones, and comments are ignored."
-            )
+            if is_tabular_upload(doc.filename, doc.mime_type):
+                job.error_message = STRUCTURED_MISS_MESSAGE
+            else:
+                job.error_message = (
+                    "No lab lines and no imaging report were detected. A lab result is a test name, "
+                    "a number, and a lab unit (for example Sodium 140 mmol/L); an imaging report has "
+                    "Findings or Impression headings. Letterhead, phones, and comments are ignored."
+                )
         db.commit()
     except Exception as e:
         job.status = JobStatus.failed

@@ -344,10 +344,15 @@ def extract_document_text(data: bytes, mime: str, filename: str) -> Tuple[str, i
         return extract_text_from_pdf(data)
     if mime.startswith("image/") or filename.lower().endswith((".tif", ".tiff", ".jpg", ".jpeg", ".png")):
         return extract_text_from_image(data, mime)
-    if mime in ("text/plain", "text/markdown") or filename.lower().endswith((".txt", ".md", ".markdown")):
+    if mime in ("text/plain", "text/markdown", "text/csv", "application/csv", "application/json", "text/json") or filename.lower().endswith(
+        (".txt", ".md", ".markdown", ".csv", ".json")
+    ):
         return extract_text_from_plain(data)
     if mime in ("text/xml", "application/xml") or filename.lower().endswith(".xml"):
         return extract_text_from_plain(data)
+    if mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" or filename.lower().endswith(".xlsx"):
+        from .structured_lab import extract_xlsx_text
+        return extract_xlsx_text(data)
     return "", 0, False
 
 

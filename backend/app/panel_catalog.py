@@ -98,6 +98,20 @@ def find_panel(db: Session, household_id: int, name: str) -> Optional[PanelDefin
     return next((p for p in rows if p.name.lower() == key), None)
 
 
+def resolve_printed_panel_name(db: Session, household_id: Optional[int], printed: str) -> str:
+    """Map a printed panel title onto the catalog name when an alias matches."""
+    name = (printed or "").strip()
+    if not name or not household_id:
+        return name
+    rows = db.query(PanelDefinition).filter(PanelDefinition.household_id == household_id).all()
+    key = name.lower()
+    for panel in rows:
+        tokens = [panel.name] + split_aliases(panel.aliases)
+        if any(t.strip().lower() == key for t in tokens if t.strip()):
+            return panel.name
+    return name
+
+
 def _analytes_by_name(analytes: list) -> Dict[str, CanonicalAnalyte]:
     return {a.name.lower(): a for a in analytes}
 

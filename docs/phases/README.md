@@ -21,7 +21,7 @@ folder start at Phase 9.
 | [phase-12-panel-catalog.md](phase-12-panel-catalog.md) | 12 — Panel catalog and data management | ✅ Built |
 | [phase-13-imaging-document-proposals.md](phase-13-imaging-document-proposals.md) | 13 — Imaging-report proposals from documents | ✅ Built |
 | [phase-14-lab-results-matrix.md](phase-14-lab-results-matrix.md) | 14 — Lab results matrix over time | ✅ Built |
-| [phase-15-structured-lab-file-import.md](phase-15-structured-lab-file-import.md) | 15 — Structured CSV / XLS / XLSX / JSON lab import | 📋 Planned |
+| [phase-15-structured-lab-file-import.md](phase-15-structured-lab-file-import.md) | 15 — Structured CSV / XLS / XLSX / JSON lab import | ✅ Built |
 
 ---
 

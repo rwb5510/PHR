@@ -601,6 +601,20 @@ function Documents() {
     await api(`/jobs/${jobId}/retry`, { method: 'POST' })
     load()
   }
+  const downloadTemplate = async (path: string, filename: string) => {
+    const r = await api(path)
+    if (!r.ok) {
+      setMsg('Could not download the lab template.')
+      return
+    }
+    const blob = await r.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
   const showText = async (docId: number) => {
     if (openText === docId) {
       setOpenText(null)
@@ -613,12 +627,17 @@ function Documents() {
   return (
     <div className="card">
       <h2>Documents</h2>
-      <p>Max 50 MB per file. PDF, TIFF, JPG, PNG, TXT, XML, MD. A lab result is a test name, a number, and a lab unit on the same row (Sodium 140 mmol/L). Letterhead, phones, comments, and page footers are ignored. Unknown test names go to the review inbox. Imaging reports (X-ray, CT, MRI, ultrasound…) with Findings or Impression go to the review inbox as imaging candidates.</p>
+      <p>Max 50 MB per file. PDF, TIFF, JPG, PNG, TXT, XML, MD, CSV, XLS, XLSX, JSON. Use the lab results template for several panels and dates in one file. A lab result is a test name, a number, and a lab unit on the same row (Sodium 140 mmol/L). Letterhead, phones, comments, and page footers are ignored. Unknown test names go to the review inbox. Imaging reports (X-ray, CT, MRI, ultrasound…) with Findings or Impression go to the review inbox as imaging candidates.</p>
+      <div className="catalog-actions">
+        <button type="button" className="secondary" onClick={() => downloadTemplate('/lab-import/template.csv', 'phr-lab-results-template.csv')}>Download CSV template</button>
+        <button type="button" className="secondary" onClick={() => downloadTemplate('/lab-import/template.json', 'phr-lab-results-template.json')}>Download JSON template</button>
+        <button type="button" className="secondary" onClick={() => downloadTemplate('/lab-import/template.xlsx', 'phr-lab-results-template.xlsx')}>Download XLSX template</button>
+      </div>
       <label>
         <input type="checkbox" checked={useModel} disabled={settings.mode === 'off'} onChange={e => setUseModel(e.target.checked)} />
         Use model (default off; disabled when mode is off)
       </label>
-      <input type="file" onChange={upload} />
+      <input type="file" accept=".pdf,.tif,.tiff,.jpg,.jpeg,.png,.txt,.xml,.md,.csv,.xls,.xlsx,.json" onChange={upload} />
       {msg && <p>{msg}</p>}
       <ul>
         {docs.map(d => (
@@ -756,10 +775,17 @@ function DataManagement() {
       {error && <p className="error">{error}</p>}
       {notice && <p>{notice}</p>}
       <div className="card">
-        <h2>Templates</h2>
+        <h2>Panel catalog templates</h2>
         <div className="catalog-actions">
           <button type="button" className="secondary" onClick={() => download('/panel-catalog/template.csv', 'panel-catalog-template.csv')}>Download CSV template</button>
           <button type="button" className="secondary" onClick={() => download('/panel-catalog/template.json', 'panel-catalog-template.json')}>Download JSON template</button>
+        </div>
+        <h2>Lab results import templates</h2>
+        <p className="muted">One result per row. Several panels and several dates can share one file.</p>
+        <div className="catalog-actions">
+          <button type="button" className="secondary" onClick={() => download('/lab-import/template.csv', 'phr-lab-results-template.csv')}>Download CSV template</button>
+          <button type="button" className="secondary" onClick={() => download('/lab-import/template.json', 'phr-lab-results-template.json')}>Download JSON template</button>
+          <button type="button" className="secondary" onClick={() => download('/lab-import/template.xlsx', 'phr-lab-results-template.xlsx')}>Download XLSX template</button>
         </div>
         <label>Upload a filled template
           <input type="file" accept=".csv,.json,text/csv,application/json" onChange={e => setFile(e.target.files?.[0] || null)} />

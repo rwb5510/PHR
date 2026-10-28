@@ -79,6 +79,16 @@ def document_in_household(db: Session, document_id: int, household_id: Optional[
     return doc
 
 
+def mime_for_upload(filename: str, content_type: Optional[str]) -> str:
+    """Prefer a real suffix type when the browser sends octet-stream."""
+    stored = (content_type or "").strip() or "application/octet-stream"
+    base = stored.split(";")[0].strip().lower()
+    if base in ("application/octet-stream", "binary/octet-stream", ""):
+        suffix = os.path.splitext(filename or "")[1].lower()
+        return SUFFIX_TO_MIME.get(suffix, stored)
+    return stored
+
+
 def resolve_media_type(filename: str, stored_mime: Optional[str]) -> str:
     stored = (stored_mime or "").strip()
     stored_base = stored.split(";")[0].strip().lower()
