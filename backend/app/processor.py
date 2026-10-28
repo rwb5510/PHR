@@ -11,6 +11,7 @@ from .models import (
 )
 from .extraction import extract_document_text, parse_lab_lines, find_collection_date, DEFAULT_PANEL_NAME
 from .document_class import classify_document, extract_imaging_reports, filename_modality
+from .panel_catalog import extra_patterns_for_household
 from .ccda import is_clinical_document, parse_sections
 from .lab_matching import match_analyte, is_plain_number, compute_normalized, compute_abnormal_flag
 from .model_client import call_model, llm_autofile_enabled, get_model_mode
@@ -94,7 +95,9 @@ def process_job(db: Session, job_id: int) -> None:
                 return
 
         analytes = db.query(CanonicalAnalyte).all()
-        lines = parse_lab_lines(text, analytes)
+        hid = doc.profile.household_id if doc.profile else None
+        extra = extra_patterns_for_household(db, hid)
+        lines = parse_lab_lines(text, analytes, extra)
         coll_date = find_collection_date(text)
 
         auto_filed_any = False

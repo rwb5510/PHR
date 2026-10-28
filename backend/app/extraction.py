@@ -461,8 +461,8 @@ def detect_panel_headers(text: str, extra_patterns=None) -> List[Dict[str, Any]]
     return headers
 
 
-def detect_panel_name(text: str) -> str:
-    headers = detect_panel_headers(text)
+def detect_panel_name(text: str, extra_patterns=None) -> str:
+    headers = detect_panel_headers(text, extra_patterns)
     return headers[0]["name"] if headers else DEFAULT_PANEL_NAME
 
 

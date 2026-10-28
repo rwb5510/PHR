@@ -37,6 +37,7 @@ from .ccda import build_ccd
 from .model_client import get_settings, update_settings, get_model_mode
 from .auth import AUTH_DISABLED, bootstrap, load_session, router as auth_router
 from .chart_routes import router as chart_router
+from .panel_catalog import router as panel_catalog_router, seed_all_empty_households
 from .documents import (
     document_in_household,
     file_response_for_document,
@@ -47,6 +48,7 @@ from .documents import (
 app = FastAPI(title="Household PHR")
 app.include_router(auth_router)
 app.include_router(chart_router)
+app.include_router(panel_catalog_router)
 
 STORAGE_ROOT = os.getenv("STORAGE_ROOT", "/data/documents")
 os.makedirs(STORAGE_ROOT, exist_ok=True)
@@ -108,6 +110,7 @@ def startup():
     db = SessionLocal()
     try:
         bootstrap(db)
+        seed_all_empty_households(db)
     finally:
         db.close()
 
