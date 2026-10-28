@@ -39,14 +39,8 @@ The root `npm run test|lint|typecheck` scripts belong to the preview port only.
 ## Backend architecture (`backend/app/`)
 
 - `main.py` — the FastAPI app and most routes (profiles, encounters, orders, labs, trends, imaging, documents, jobs, proposals/review inbox, C-CDA export, DICOM, Orthanc proxy, viewer). A cookie-auth HTTP middleware guards everything except `PUBLIC_PATHS`. On startup: `Base.metadata.create_all` (no Alembic tree exists, despite it being in requirements — derive any migration number at build time), load `seed/analytes.csv`, bootstrap the single household user from env.
-- `chart_routes.py` — manual-chart CRUD router (medications, allergies, problems, providers, insurance, etc.); `_profile()` scopes lookups to the caller's household.
 - `auth.py` — Argon2 passwords, httpOnly `session` cookie stored in DB, optional TOTP (enforced only once enrolled), active profile stored on the session row. `AUTH_DISABLED` env bypasses auth (tests only).
-- `models.py` / `schemas.py` — SQLAlchemy models and Pydantic I/O.
 - Document pipeline: upload stores bytes on the `documents` volume (`STORAGE_ROOT`) and enqueues a `Job`. `worker.py` is a separate container polling a Postgres queue (`FOR UPDATE SKIP LOCKED`) and calling `processor.process_job`, which uses `extraction.py` (PDF text/OCR, lab-line parsing, panel/date detection) and optionally `model_client.py`. Output is `Proposal` rows reviewed in the Review inbox; accepting a proposal files clinical rows.
-- `lab_matching.py` — maps raw lab names to `CanonicalAnalyte` via aliases, unit normalization, abnormal flags.
-- `ccda.py` — C-CDA build/parse (import and export round-trip). `orthanc_client.py` — DICOM upload/delete against Orthanc.
-
-Frontend is essentially one file, `frontend/src/App.tsx` (react-router), calling the API via `frontend/src/api.ts` with `/api` prefix; Vite's dev server proxies `/api` → `api:8000` and strips the prefix.
 
 ## Domain rules that must hold
 
