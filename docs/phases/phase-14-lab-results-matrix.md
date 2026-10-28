@@ -1,6 +1,6 @@
 # Phase 14 — Lab results matrix over time
 
-**Status:** 🔨 In Progress — started 2026-10-27
+**Status:** ✅ Built
 **GitHub Issue:** [#6](https://github.com/rwb5510/PHR/issues/6)
 **Prerequisites:** none (Phase 11 makes multi-panel days easier to read; ship the matrix even if 11 is later)
 **Blocks:** none
@@ -175,3 +175,31 @@ Frontend is not unit-tested in this repo; do not add a Jest stack unless one exi
 - [x] Phone: horizontal scroll + sticky first column.
 - [x] Matrix API is profile-scoped from the session household.
 - [x] Tests cover two dates, unmatched rows, and profile isolation; Phase 3 trend tests still pass.
+
+---
+
+## What Shipped *(post-build)*
+
+Labs is a date-column matrix. `GET /profiles/{profile_id}/lab-matrix` is household-scoped from the session, joins components to reports in one query, and returns newest-first date keys with canonical rows in seed order, then unmatched original names. Same-day panels share a column. When the same analyte appears twice that day, the later `reported_time` / higher `lab_report.id` wins and `also` lists the rest. Reports with no `collection_time` stay off the matrix and on the report list.
+
+`GET /profiles/{profile_id}/trends/original/{name}` returns unmatched series (`canonical_analyte_id IS NULL`, `normalize_test_name`); empty series are `{ points: [] }`. Canonical `GET /trends/{analyte_name}` is unchanged.
+
+The Labs page has **Results over time** (matrix) above **Reports**. Row labels open that component’s trend; cells open `/lab-report/{id}`. “Sodium trend” is gone from profile nav. Dashboard flagged labs with no canonical analyte link to the original-name trend. L/H cells use `--red`; units stay in the cell; the first column is sticky with horizontal scroll.
+
+## Deviations from the Original Plan *(post-build)*
+
+- Matrix assembly lives in `backend/app/lab_matrix.py` rather than growing `main.py`.
+- Dashboard unmatched flags go to `/trends/original/{name}` rather than `/labs`.
+- Collision `also` is shown as a `+N` suffix on the cell plus a title string (panel + range + others). Units remain in the cell text.
+
+## Verification Performed *(post-build)*
+
+- Local `pytest tests/test_phase14.py tests/test_phase3.py`: 15 passed (two dates, same-day CMP+CBC one column, unmatched FooBar, mixed-unit glucose cells, profile isolation, same-day collision `also`, null collection_time omitted, empty original trend 200).
+- Frontend `tsc && vite build` clean in the worktree.
+- Live click-through on the already-running `:5173` stack was not used (that compose project is another checkout).
+
+## Deferred / Not Built *(post-build)*
+
+- uPlot / sparkline in TrendView (still a unit-split list).
+- Extra LOINC or invented reference bands.
+- Auth changes.
