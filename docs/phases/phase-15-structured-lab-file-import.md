@@ -1,6 +1,6 @@
 # Phase 15 — Structured CSV / XLS / XLSX / JSON lab import
 
-**Status:** 📋 Planned
+**Status:** ✅ Built
 **GitHub Issue:** [#7](https://github.com/rwb5510/PHR/issues/7)
 **Prerequisites:** none (Phase 12 catalog improves panel-name matching; Phase 11 grouping helps; both optional)
 **Blocks:** none
@@ -183,13 +183,13 @@ Keep Phase 4 PDF tests green.
    **Answer:** Publish long format so one file can hold several panels and several dates. (Proposed; interview left this open.)
 
 2. Legacy `.xls` (Excel 97–2003).
-   **Answer:** *(pending — default: store the file; structured parse guaranteed for xlsx/csv/json; xls best-effort or a “save as xlsx” job message)*
+   **Answer:** Store the file; job needs_review with “save as .xlsx for structured import.” Structured parse is for csv/json/xlsx.
 
 3. Extra sheets in a workbook.
-   **Answer:** *(pending — default: read the sheet named `results` if present, else the first sheet)*
+   **Answer:** Read the sheet named `results` if present, else the first sheet.
 
 4. Alternate header names (`Test`, `Result`, `Ref Range`).
-   **Answer:** *(pending — default: only the published headers in v1; unmatched files fall through to text dump)*
+   **Answer:** Only the published headers in v1; unmatched files fall through to text dump.
 
 ---
 
@@ -205,11 +205,42 @@ Keep Phase 4 PDF tests green.
 
 ## Definition of Done
 
-- [ ] Documents accepts csv, xls/xlsx, and json up to 50 MB and lists them in the help text.
-- [ ] Published CSV/JSON/(XLSX) template supports several panels and several dates in one file (long format).
-- [ ] A matching template file files one lab report per (date, panel), sharing a lab encounter per date (+ performing lab when present).
-- [ ] Unknown test names go to the review inbox; known analytes with number, unit, and date auto-file per standing spec.
-- [ ] A non-template spreadsheet/JSON is stored and does not fail with the PDF “Sodium 140 mmol/L” empty-lab copy.
-- [ ] `openpyxl` (or equivalent) is a real backend dependency used for xlsx — no hand-rolled xlsx parser.
-- [ ] No new LOINC codes, no invented ranges, no client-sent household ids.
-- [ ] Tests cover multi-panel + multi-date JSON/CSV/XLSX, unmatched names, and non-template JSON; Phase 4 PDF tests still pass.
+- [x] Documents accepts csv, xls/xlsx, and json up to 50 MB and lists them in the help text.
+- [x] Published CSV/JSON/(XLSX) template supports several panels and several dates in one file (long format).
+- [x] A matching template file files one lab report per (date, panel), sharing a lab encounter per date (+ performing lab when present).
+- [x] Unknown test names go to the review inbox; known analytes with number, unit, and date auto-file per standing spec.
+- [x] A non-template spreadsheet/JSON is stored and does not fail with the PDF “Sodium 140 mmol/L” empty-lab copy.
+- [x] `openpyxl` (or equivalent) is a real backend dependency used for xlsx — no hand-rolled xlsx parser.
+- [x] No new LOINC codes, no invented ranges, no client-sent household ids.
+- [x] Tests cover multi-panel + multi-date JSON/CSV/XLSX, unmatched names, and non-template JSON; Phase 4 PDF tests still pass.
+
+---
+
+## What Shipped *(post-build)*
+
+Documents accepts CSV, XLS, XLSX, and JSON on the existing 50 MB upload. Matching long-format files (`collection_date`, `panel_name`, `original_name`, `value`) file one `LabReport` per (date, panel), sharing a lab encounter per (date, performing lab). Known seed analytes with a plain number, unit, and collection date auto-file; unknown names become `lab_line` proposals. Panel titles map through the Phase 12 catalog when that household has aliases.
+
+Authenticated `GET /lab-import/template.csv|json|xlsx` serve a three-row synthetic template. Documents and Data management both link them. `openpyxl==3.1.5` reads and writes xlsx (`results` sheet, else the first sheet). Client `octet-stream` uploads store a suffix mime.
+
+## Deviations from the Original Plan *(post-build)*
+
+- Parse, template bytes, and download routes live in `backend/app/structured_lab.py` rather than growing `extraction.py` / `main.py`.
+- Legacy `.xls` is stored with a save-as-xlsx job message; `xlrd` was not added.
+- Wide (dates-as-columns) sheets are not parsed; the job points at the long template.
+- Empty non-template csv/json/xlsx uses the structured-miss copy; other empty PDFs keep the Phase 13 lab+imaging wording.
+
+## Verification Performed *(post-build)*
+
+- Local `pytest tests/test_phase15.py`: 10 passed (multi-panel/multi-date JSON, CSV, XLSX; Ferritin inbox; non-template JSON; 50 MB 413; profile isolation; suffix mime; .xls message; template downloads).
+- Docker `pytest tests/test_phase4.py`: 8 passed (Tesseract OCR path).
+- After rebasing onto `main` with Phase 13/14: `pytest tests/test_phase13.py tests/test_phase14.py tests/test_phase15.py` — 32 passed.
+- Frontend `tsc && vite build` in the worktree.
+- Live stack: login, CSV/JSON/XLSX template downloads, Documents help text and `accept` list. No test labs were filed onto existing household profiles.
+
+## Deferred / Not Built *(post-build)*
+
+- Wide dates-as-columns template.
+- In-browser spreadsheet editor.
+- `xlrd` / Excel 97–2003 structured parse.
+- Alternate portal header names (`Test`, `Result`, `Ref Range`).
+- Extra LOINC or invented ranges.

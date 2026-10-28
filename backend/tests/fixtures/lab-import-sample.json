@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "format": "phr-lab-results",
+  "results": [
+    {
+      "collection_date": "2026-09-21",
+      "panel_name": "CMP",
+      "original_name": "Sodium",
+      "value": "140",
+      "unit": "mmol/L",
+      "ref_low": 135,
+      "ref_high": 145,
+      "ref_text": "135-145",
+      "flag": null,
+      "performing_lab": "Quest",
+      "specimen": "serum"
+    },
+    {
+      "collection_date": "2026-09-21",
+      "panel_name": "CBC",
+      "original_name": "WBC",
+      "value": "6.2",
+      "unit": "10*3/uL",
+      "performing_lab": "Quest"
+    },
+    {
+      "collection_date": "2026-05-01",
+      "panel_name": "BMP",
+      "original_name": "Sodium",
+      "value": "138",
+      "unit": "mmol/L"
+    }
+  ]
+}
