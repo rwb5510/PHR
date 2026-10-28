@@ -554,6 +554,114 @@ function Settings() {
   )
 }
 
+function DataManagement() {
+  const [panels, setPanels] = useState<any[]>([])
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [replaceAll, setReplaceAll] = useState(false)
+  const [open, setOpen] = useState<Record<number, boolean>>({})
+  const load = () => {
+    apiJson<{ panels: any[] }>('/panel-catalog').then(d => setPanels(d.panels || [])).catch(e => setError(e.message))
+  }
+  useEffect(() => { load() }, [])
+  const download = async (path: string, filename: string) => {
+    const r = await api(path)
+    if (!r.ok) {
+      setError('Could not download the template.')
+      return
+    }
+    const blob = await r.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  const upload = async () => {
+    setError('')
+    setNotice('')
+    if (!file) {
+      setError('Choose a CSV or JSON file first.')
+      return
+    }
+    const body = new FormData()
+    body.append('file', file)
+    const mode = replaceAll ? 'replace' : 'merge'
+    try {
+      const data = await apiJson(`/panel-catalog/import?mode=${mode}`, { method: 'POST', body })
+      const unmatched = (data.unmatched_components || []).length
+      setNotice(`Imported ${data.imported || 0}, updated ${data.updated || 0}, skipped ${data.skipped || 0}. Unmatched components: ${unmatched}.`)
+      setFile(null)
+      load()
+    } catch (e: any) {
+      setError(e.message || 'Upload failed')
+    }
+  }
+  const remove = async (id: number, name: string) => {
+    if (!window.confirm(`Remove panel “${name}” from the catalog? Filed lab reports stay.`)) return
+    await apiJson(`/panel-catalog/${id}`, { method: 'DELETE' })
+    load()
+  }
+  return (
+    <div>
+      <h1>Data management</h1>
+      <p className="muted">Starter panels (CMP, BMP, CBC, lipid, A1c, TSH) load the first time. You can add aliases without adding lab codes.</p>
+      {error && <p className="error">{error}</p>}
+      {notice && <p>{notice}</p>}
+      <div className="card">
+        <h2>Templates</h2>
+        <div className="catalog-actions">
+          <button type="button" className="secondary" onClick={() => download('/panel-catalog/template.csv', 'panel-catalog-template.csv')}>Download CSV template</button>
+          <button type="button" className="secondary" onClick={() => download('/panel-catalog/template.json', 'panel-catalog-template.json')}>Download JSON template</button>
+        </div>
+        <label>Upload a filled template
+          <input type="file" accept=".csv,.json,text/csv,application/json" onChange={e => setFile(e.target.files?.[0] || null)} />
+        </label>
+        <label className="check-row">
+          <input type="checkbox" checked={replaceAll} onChange={e => setReplaceAll(e.target.checked)} />
+          Replace all panels (does not delete filed lab reports)
+        </label>
+        <button type="button" onClick={upload}>Upload</button>
+      </div>
+      {panels.map(p => (
+        <div className="card panel-card" key={p.id}>
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <button type="button" className="secondary" onClick={() => setOpen(o => ({ ...o, [p.id]: !o[p.id] }))}>
+              {open[p.id] ? 'Hide components' : 'Show components'} — {p.name}
+            </button>
+            <button type="button" className="danger" onClick={() => remove(p.id, p.name)}>Remove</button>
+          </div>
+          <p className="muted">Aliases: {(p.aliases || []).join(', ') || 'none'}</p>
+          {open[p.id] && (
+            <div className="component-table-wrap">
+              <table className="components">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Printed alias</th>
+                    <th>Canonical analyte</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(p.components || []).map((c: any, i: number) => (
+                    <tr key={i}>
+                      <td>{c.sequence}</td>
+                      <td>{c.original_alias}</td>
+                      <td>{c.canonical_name || 'unmatched'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -839,6 +947,7 @@ export default function App() {
         <Link to="/">Household PHR</Link>
         <div className="row">
           <span>{me.username}</span>
+          <Link to="/data">Data management</Link>
           <Link to="/settings">Settings</Link>
           <button className="secondary" onClick={logout}>Sign out</button>
         </div>
@@ -848,6 +957,7 @@ export default function App() {
         <Route path="/profile/:id/*" element={<ProfileLayout />} />
         <Route path="/encounter/:id" element={<EncounterDetail />} />
         <Route path="/lab-report/:id" element={<LabReportView />} />
+        <Route path="/data" element={<DataManagement />} />
         <Route path="/settings" element={<Settings />} />
       </Routes>
       <Disclaimer />
