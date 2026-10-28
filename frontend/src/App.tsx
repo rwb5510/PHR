@@ -407,7 +407,7 @@ function ImagingLibrary() {
       </ul>
       {Object.entries(groups).map(([mod, reports]: any) => (
         <div key={mod}>
-          <h3>{mod}</h3>
+          <h3>{modalityLabel(mod)} ({mod})</h3>
           <ul>
             {reports.map((r: any) => (
               <li key={r.id}>
@@ -425,6 +425,50 @@ function ImagingLibrary() {
   )
 }
 
+const MODALITIES: [string, string][] = [
+  ['DX', 'X-ray'], ['CT', 'CT'], ['MR', 'MRI'], ['US', 'Ultrasound'], ['MG', 'Mammography'],
+  ['NM', 'Nuclear medicine'], ['PT', 'PET'], ['XA', 'Fluoroscopy / angiography'],
+  ['DXA', 'Bone density (DXA)'], ['OT', 'Other'],
+]
+const modalityLabel = (code?: string) => MODALITIES.find(([c]) => c === code)?.[1] || code || ''
+
+function ImagingFromDocument({ docId, onDone }: { docId: number, onDone: (msg: string) => void }) {
+  const [f, setF] = useState<Record<string, string>>({ modality: 'DX' })
+  const [err, setErr] = useState('')
+  const set = (k: string) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value })
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    const body = Object.fromEntries(Object.entries(f).filter(([, v]) => v.trim() !== ''))
+    const r = await api(`/documents/${docId}/create-imaging`, { method: 'POST', body: JSON.stringify(body) })
+    if (!r.ok) {
+      setErr((await r.json().catch(() => ({}))).detail || 'Could not save the imaging report.')
+      return
+    }
+    onDone('Imaging report saved. It is in the Imaging library.')
+  }
+  return (
+    <form className="imaging-form" onSubmit={submit}>
+      <label>Modality <select value={f.modality} onChange={set('modality')}>
+        {MODALITIES.map(([c, l]) => <option key={c} value={c}>{l} ({c})</option>)}
+      </select></label>
+      <label>Body site <input value={f.body_site || ''} onChange={set('body_site')} /></label>
+      <label>Laterality <select value={f.laterality || ''} onChange={set('laterality')}>
+        <option value="">—</option>
+        <option value="left">left</option>
+        <option value="right">right</option>
+        <option value="bilateral">bilateral</option>
+      </select></label>
+      <label>Performed <input type="date" value={f.performed_at || ''} onChange={set('performed_at')} /></label>
+      <label>Findings <textarea rows={4} value={f.findings || ''} onChange={set('findings')} /></label>
+      <label>Impression <textarea rows={3} value={f.impression || ''} onChange={set('impression')} /></label>
+      <label>Facility <input value={f.facility || ''} onChange={set('facility')} /></label>
+      <label>Reporting provider <input value={f.reporting_provider || ''} onChange={set('reporting_provider')} /></label>
+      {err && <p className="error">{err}</p>}
+      <button type="submit">Save imaging report</button>
+    </form>
+  )
+}
+
 function Documents() {
   const { id } = useParams()
   const [docs, setDocs] = useState<any[]>([])
@@ -433,6 +477,7 @@ function Documents() {
   const [settings, setSettings] = useState<any>({ mode: 'off' })
   const [openText, setOpenText] = useState<number | null>(null)
   const [extracted, setExtracted] = useState<Record<number, string>>({})
+  const [imagingFor, setImagingFor] = useState<number | null>(null)
   const load = () => apiJson<any[]>(`/profiles/${id}/documents`).then(setDocs).catch(() => setDocs([]))
   useEffect(() => {
     load()
@@ -476,7 +521,7 @@ function Documents() {
   return (
     <div className="card">
       <h2>Documents</h2>
-      <p>Max 50 MB per file. PDF, TIFF, JPG, PNG, TXT, XML, MD. A lab result is a test name, a number, and a lab unit on the same row (Sodium 140 mmol/L). Letterhead, phones, comments, and page footers are ignored. Unknown test names go to the review inbox.</p>
+      <p>Max 50 MB per file. PDF, TIFF, JPG, PNG, TXT, XML, MD. A lab result is a test name, a number, and a lab unit on the same row (Sodium 140 mmol/L). Letterhead, phones, comments, and page footers are ignored. Unknown test names go to the review inbox. Imaging reports (X-ray, CT, MRI, ultrasound…) with Findings or Impression go to the review inbox as imaging candidates.</p>
       <label>
         <input type="checkbox" checked={useModel} disabled={settings.mode === 'off'} onChange={e => setUseModel(e.target.checked)} />
         Use model (default off; disabled when mode is off)
@@ -495,6 +540,14 @@ function Documents() {
               </button>
             )}
             <button className="secondary" onClick={() => showText(d.id)}>Extracted text</button>
+            {(d.job_status === 'needs_review' || d.job_status === 'filed') && (
+              <button className="secondary" onClick={() => setImagingFor(imagingFor === d.id ? null : d.id)}>
+                Create imaging report from this document
+              </button>
+            )}
+            {imagingFor === d.id && (
+              <ImagingFromDocument docId={d.id} onDone={m => { setImagingFor(null); setMsg(m) }} />
+            )}
             {openText === d.id && (
               <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, background: '#fff', padding: 12, border: '1px solid var(--line)', maxHeight: 240, overflow: 'auto' }}>
                 {extracted[d.id] || '(no text yet)'}
@@ -811,7 +864,7 @@ function Inbox() {
   return (
     <div className="card inbox-card">
       <h2>Review Inbox</h2>
-      <p>These are candidate chart rows. Lab lines here did not auto-file (unknown test name, missing collection date, or a non-numeric value). Letterhead is not listed.</p>
+      <p>These are candidate chart rows. Lab lines here did not auto-file (unknown test name, missing collection date, or a non-numeric value). Imaging reports always wait here for review. Letterhead is not listed.</p>
       {props.length === 0 && <p>No pending proposals.</p>}
       <div className="inbox-layout">
         <ul className="inbox-list">
@@ -828,6 +881,16 @@ function Inbox() {
                     {' '}{p.payload?.value_text} {p.payload?.unit_original || ''}
                     {p.payload?.ref_text ? ` (${p.payload.ref_text})` : ''}
                     {p.payload?.panel_name && <span className="muted"> · {p.payload.panel_name}</span>}
+                    <span className="muted inbox-quote">{p.quote}</span>
+                  </span>
+                ) : p.type === 'imaging_report' ? (
+                  <span>
+                    <strong>Imaging: {modalityLabel(p.payload?.modality)}</strong>
+                    {p.payload?.body_site && <> · {p.payload.laterality ? `${p.payload.laterality} ` : ''}{p.payload.body_site}</>}
+                    {p.payload?.performed_at && <span className="muted"> · {p.payload.performed_at}</span>}
+                    {p.payload?.impression && (
+                      <span className="inbox-impression">{p.payload.impression.slice(0, 200)}{p.payload.impression.length > 200 ? '…' : ''}</span>
+                    )}
                     <span className="muted inbox-quote">{p.quote}</span>
                   </span>
                 ) : (

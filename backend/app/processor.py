@@ -10,6 +10,7 @@ from .models import (
     LabReport, LabComponent, Encounter, EncounterType, CanonicalAnalyte
 )
 from .extraction import extract_document_text, parse_lab_lines, find_collection_date, DEFAULT_PANEL_NAME
+from .document_class import classify_document, extract_imaging_reports, filename_modality
 from .panel_catalog import extra_patterns_for_household
 from .ccda import is_clinical_document, parse_sections
 from .lab_matching import match_analyte, is_plain_number, compute_normalized, compute_abnormal_flag
@@ -72,12 +73,12 @@ def process_job(db: Session, job_id: int) -> None:
                 result = call_model(doc.id, text, alias_list, True)
                 if result:
                     for p in result.get("proposals", []):
-                        is_imp = p.get("is_impression") or p.get("type") == "impression"
                         # Never auto-file impressions; only lab_line may auto-file if setting on
+                        ptype = getattr(ProposalType, p.get("type") or "", None) or ProposalType.lab_report
                         prop = Proposal(
                             document_id=doc.id,
                             profile_id=doc.profile_id,
-                            type=ProposalType.lab_line if p.get("type") == "lab_line" else ProposalType.lab_report,
+                            type=ptype,
                             status=ProposalStatus.pending,
                             payload=json.dumps(p),
                             quote=p.get("quote"),
@@ -183,17 +184,38 @@ def process_job(db: Session, job_id: int) -> None:
                 db.add(comp)
             auto_filed_any = True
 
+        # Phase 13: radiology narratives become imaging_report proposals. Never auto-filed.
+        kind = classify_document(doc.filename, text, lab_lines=len(lines))
+        if kind == "imaging" and text.strip():
+            for payload in extract_imaging_reports(doc.filename, text):
+                db.add(Proposal(
+                    document_id=doc.id,
+                    profile_id=doc.profile_id,
+                    type=ProposalType.imaging_report,
+                    status=ProposalStatus.pending,
+                    payload=json.dumps(payload),
+                    quote=payload.get("quote"),
+                ))
+                proposals_created = True
+
         if auto_filed_any and not proposals_created:
             job.status = JobStatus.filed
             job.error_message = None
         elif proposals_created:
             job.status = JobStatus.needs_review
             job.error_message = None
+        elif filename_modality(doc.filename):
+            # Named like an imaging study but no report text came out (blank scan, image only).
+            job.status = JobStatus.needs_review
+            job.error_message = (
+                "No imaging report text was found. Use Create imaging report to enter it by hand."
+            )
         else:
             job.status = JobStatus.needs_review
             job.error_message = (
-                "No lab results found. A result is a test name, a number, and a lab unit "
-                "(for example Sodium 140 mmol/L). Letterhead, phones, and comments are ignored."
+                "No lab lines and no imaging report were detected. A lab result is a test name, "
+                "a number, and a lab unit (for example Sodium 140 mmol/L); an imaging report has "
+                "Findings or Impression headings. Letterhead, phones, and comments are ignored."
             )
         db.commit()
     except Exception as e:

@@ -19,7 +19,7 @@ folder start at Phase 9.
 | [phase-10-inline-source-documents.md](phase-10-inline-source-documents.md) | 10 — In-browser source documents | ✅ Built |
 | [phase-11-multi-panel-names.md](phase-11-multi-panel-names.md) | 11 — Multi-panel names on one document | ✅ Built |
 | [phase-12-panel-catalog.md](phase-12-panel-catalog.md) | 12 — Panel catalog and data management | ✅ Built |
-| [phase-13-imaging-document-proposals.md](phase-13-imaging-document-proposals.md) | 13 — Imaging-report proposals from documents | 📋 Planned |
+| [phase-13-imaging-document-proposals.md](phase-13-imaging-document-proposals.md) | 13 — Imaging-report proposals from documents | ✅ Built |
 | [phase-14-lab-results-matrix.md](phase-14-lab-results-matrix.md) | 14 — Lab results matrix over time | 📋 Planned |
 | [phase-15-structured-lab-file-import.md](phase-15-structured-lab-file-import.md) | 15 — Structured CSV / XLS / XLSX / JSON lab import | 📋 Planned |
 

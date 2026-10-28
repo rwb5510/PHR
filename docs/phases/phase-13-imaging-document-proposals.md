@@ -1,6 +1,6 @@
 # Phase 13 — Imaging-report proposals from documents
 
-**Status:** 📋 Planned
+**Status:** ✅ Built — 2026-10-27
 **GitHub Issue:** [#5](https://github.com/rwb5510/PHR/issues/5)
 **Prerequisites:** none (reuse Phase 9’s inbox source pane when it exists; otherwise filename + extracted text)
 **Blocks:** none
@@ -152,10 +152,10 @@ Inbox cards wrap; impression text `pre-wrap`; 44px buttons. Source pane stacked 
    **Answer:** Yes — `imaging_report` proposals with source beside them. (Interview.)
 
 2. When a file looks like both a lab and an imaging report.
-   **Answer:** *(pending — default: keep lab lines and also add an imaging proposal if imaging headings exist)*
+   **Answer:** Default taken at build — keep lab lines, and add an imaging proposal only when the text also has Findings/Technique headings, an Impression/Conclusion heading, and a modality word.
 
 3. One proposal vs split findings/impression.
-   **Answer:** *(pending — default: one `imaging_report` proposal per document unless page text has multiple Impression headings)*
+   **Answer:** Default taken at build — one proposal per document; one per report when the text has several Impression/Conclusion headings.
 
 ---
 
@@ -170,11 +170,39 @@ Inbox cards wrap; impression text `pre-wrap`; 44px buttons. Source pane stacked 
 
 ## Definition of Done
 
-- [ ] An imaging-like narrative PDF (e.g. chest XR) creates an `imaging_report` proposal instead of a “No lab results found” lab-unit message.
-- [ ] Inbox can accept/reject that proposal; Accept writes `ImagingReport` + imaging encounter with `source_document_id`.
-- [ ] Original file is kept and viewable beside the proposal (Phase 9 pane if present, else filename + extracted text).
-- [ ] Manual `POST /documents/{id}/create-imaging` is a real route and remains available.
-- [ ] Lab PDFs still parse as labs; imaging does not auto-file; no DICOM required.
-- [ ] Household/session scoping on accept and file GET; no client-sent household id.
-- [ ] Tests cover XR fixture, BMP non-regression, and the manual create route.
-- [ ] No FHIR, no invented lab ranges, no hard-delete of filed rows.
+- [x] An imaging-like narrative PDF (e.g. chest XR) creates an `imaging_report` proposal instead of a “No lab results found” lab-unit message.
+- [x] Inbox can accept/reject that proposal; Accept writes `ImagingReport` + imaging encounter with `source_document_id`.
+- [x] Original file is kept and viewable beside the proposal (Phase 9 pane if present, else filename + extracted text).
+- [x] Manual `POST /documents/{id}/create-imaging` is a real route and remains available.
+- [x] Lab PDFs still parse as labs; imaging does not auto-file; no DICOM required.
+- [x] Household/session scoping on accept and file GET; no client-sent household id.
+- [x] Tests cover XR fixture, BMP non-regression, and the manual create route.
+- [x] No FHIR, no invented lab ranges, no hard-delete of filed rows.
+
+---
+
+## What Shipped *(post-build)*
+
+- `backend/app/document_class.py` (new): `classify_document(filename, text, lab_lines=None)` → `lab | imaging | unknown`, `imaging_signal`, `filename_modality` / `text_modality`, and `extract_imaging_reports(filename, text)` returning payloads with `modality` (spec code), `modality_label`, `body_site`, `laterality`, `performed_at`, `exam`, `findings`, `impression`, `facility`, `reporting_provider`, `quote`. Headings are matched with or without a trailing colon; sections stop at the next heading or an end-of-report / signed-by line; fields capped at 20k chars, quote at 240.
+- `processor.py`: after lab parsing, imaging-like documents with text get `imaging_report` proposals (never auto-filed). Job messages: imaging-named file with no text → "No imaging report text was found…"; unknown → neutral "No lab lines and no imaging report were detected…". Model path now maps any `type` that names a `ProposalType` (e.g. `imaging_report`) instead of folding everything into `lab_report`.
+- `main.py`: `POST /proposals/{id}/accept` has an `imaging_report` branch (imaging `Encounter` + `ImagingReport`, `source_document_id`, profile from the proposal row, DICOM fields null). Accept and reject are now household-scoped via the session (`_proposal_in_household`). `POST /documents/{id}/create-imaging` is registered, household-scoped, and shares `_file_imaging_report` with accept; body `profile_id` is ignored.
+- Frontend: inbox renders imaging candidates (modality label, side + site, date, 200-char impression preview, quote) beside the Phase 9 source pane; Documents rows (`needs_review` / `filed`) get **Create imaging report from this document** with a small form (spec modality codes, findings/impression textareas); Imaging library headings show label + code.
+
+## Deviations from the Original Plan *(post-build)*
+
+- `classify_document` takes an optional `lab_lines` count so the processor passes the real parsed-row count instead of re-parsing.
+- `performed_at` falls back to an ISO date in the filename (e.g. `2026-10-23 XR chest…`) when no labeled exam/study/performed date is printed.
+- Short modality codes (US, MR, CT, XR…) count only in the filename or on an `EXAM:` / `PROCEDURE:` line; body text needs long words (ultrasound, radiograph, MRI, mammogram…), per the letterhead risk.
+- Reject was also household-scoped (the plan only called out accept).
+
+## Verification Performed *(post-build)*
+
+- `docker compose run --rm --no-deps api pytest tests/test_phase13.py` → 14 passed (classifier units, field extraction, bare headings, multi-impression split, XR PDF → `DX`/chest proposal with no lab error, accept → report + imaging encounter + file still served + library, reject keeps file, BMP still auto-files with no imaging proposal, `labs.pdf` lab-only, neutral unknown message, imaging-named blank file message, manual create route ignoring body `profile_id`, model `imaging_report` mapping, other-household accept/reject → 404).
+- Per-file regression: `test_lab_parse` 26, `test_phase3` 7, `test_phase4` 8, `test_phase5` 2, `test_phase6` 4, `test_phase9` 8, `test_phase10` 9, `test_phase11` 6 — all pass. `test_phase7::test_orthanc_ports_unpublished` fails in the container because `../docker-compose.yml` is not in the image (pre-existing, unrelated).
+- `cd frontend && npm run build` (tsc + vite) passes.
+- Not run: the real `2026-10-23 XR chest post port.pdf` (not in repo) or a manual click-through of the UI.
+
+## Deferred / Not Built *(post-build)*
+
+- Editing an imaging proposal before accepting (accept, then edit; or reject and use the manual form).
+- Reprocess does not remove imaging reports already accepted from that document, so reprocessing re-proposes them.
