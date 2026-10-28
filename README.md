@@ -30,6 +30,19 @@ See `.env.example`.
 - `ORTHANC_USER` / `ORTHANC_PASS`
 - `LLM_API_KEY` — only if you later turn the model on in Settings
 
+## CI
+
+GitHub Actions runs on every push and pull request to `main`.
+
+- Backend: Python 3.12, Tesseract/Poppler, each `backend/tests/test_*.py` in its own process (modules bind SQLite and `STORAGE_ROOT` at import)
+- Frontend: Node 20, `npm install` and `npm run build` in `frontend/` (`tsc && vite build`)
+
+```bash
+# local equivalents
+cd backend && PYTHONPATH=. pytest tests/test_phase3.py
+cd frontend && npm install && npm run build
+```
+
 ## Acceptance path
 
 1. Sign in.

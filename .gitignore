@@ -13,6 +13,8 @@ dist/
 .node_modules.lock
 
 # Python
+.venv/
+venv/
 __pycache__/
 *.py[cod]
 *$py.class

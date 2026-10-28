@@ -1,5 +1,6 @@
 import os
 os.environ["DATABASE_URL"] = "sqlite:////tmp/test_phase3.db"
+os.environ["STORAGE_ROOT"] = "/tmp/phr_docs_test3"
 
 import pytest
 from fastapi.testclient import TestClient
