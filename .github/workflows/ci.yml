@@ -38,6 +38,7 @@ jobs:
         working-directory: backend
         env:
           PYTHONPATH: ${{ github.workspace }}/backend
+          STORAGE_ROOT: /tmp/phr-ci-docs
         run: |
           set -euo pipefail
           status=0
