@@ -467,26 +467,40 @@ def accept_proposal(proposal_id: int, db: Session = Depends(get_db)):
     # For lab_line, create report + component if not already
     if prop.type == ProposalType.lab_line:
         coll = payload.get("collection_date")
-        coll_dt = datetime.fromisoformat(coll) if coll else datetime.utcnow()
-        report = (
-            db.query(LabReport)
-            .filter(LabReport.source_document_id == prop.document_id, LabReport.profile_id == prop.profile_id)
-            .first()
+        coll_dt = datetime.fromisoformat(coll) if coll else None
+        panel_name = payload.get("panel_name") or "Reviewed Panel"
+        doc_reports = db.query(LabReport).filter(
+            LabReport.source_document_id == prop.document_id,
+            LabReport.profile_id == prop.profile_id,
         )
+        # Each printed panel keeps its own report; a CBC line never lands on the CMP.
+        report = doc_reports.filter(LabReport.panel_name == panel_name).first()
         if not report:
-            enc = Encounter(
-                profile_id=prop.profile_id,
-                type=EncounterType.lab,
-                start=coll_dt,
-                reason="Accepted from review",
+            # Panels drawn together share one lab encounter. Without a printed date
+            # the whole file is one draw, so any report on it gives the encounter.
+            sibling = (
+                doc_reports.filter(LabReport.collection_time == coll_dt).first()
+                if coll_dt else doc_reports.first()
             )
-            db.add(enc)
-            db.flush()
+            if sibling:
+                enc_id = sibling.encounter_id
+                coll_dt = coll_dt or sibling.collection_time
+            else:
+                coll_dt = coll_dt or datetime.utcnow()
+                enc = Encounter(
+                    profile_id=prop.profile_id,
+                    type=EncounterType.lab,
+                    start=coll_dt,
+                    reason="Accepted from review",
+                )
+                db.add(enc)
+                db.flush()
+                enc_id = enc.id
             report = LabReport(
                 profile_id=prop.profile_id,
-                encounter_id=enc.id,
+                encounter_id=enc_id,
                 collection_time=coll_dt,
-                panel_name=payload.get("panel_name") or "Reviewed Panel",
+                panel_name=panel_name,
                 source_document_id=prop.document_id,
             )
             db.add(report)
