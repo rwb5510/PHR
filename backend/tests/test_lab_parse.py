@@ -1,6 +1,8 @@
 """Lab PDF parsing: results vs letterhead/noise."""
 from types import SimpleNamespace
-from app.extraction import parse_lab_lines, find_collection_date, parse_result_line, detect_panel_name
+from app.extraction import (
+    parse_lab_lines, find_collection_date, parse_result_line, detect_panel_name, detect_panel_headers,
+)
 from app.lab_matching import match_analyte
 
 
@@ -269,3 +271,90 @@ def test_column_blob_still_finds_each_row():
     assert "Sodium" in n
     assert "Potassium" in n
     assert all("Director" not in x and "Jane" not in x for x in n)
+
+
+# Phase 11: one document, several panels.
+
+TWO_PANELS = """Collected: 2026-09-21
+COMPREHENSIVE METABOLIC PANEL
+Sodium 140 mmol/L (135-145)
+Potassium 4.2 mmol/L (3.5-5.1)
+Glucose 95 mg/dL (70-99)
+COMPLETE BLOOD COUNT
+WBC 6.2 10*3/uL (3.8-10.8)
+Hemoglobin 13.5 g/dL (11.7-15.5)
+"""
+
+
+def panel_of(rows):
+    return {r["original_name"]: r["panel_name"] for r in rows}
+
+
+def test_two_panels_each_line_under_its_header():
+    p = panel_of(parse_lab_lines(TWO_PANELS, analytes()))
+    assert p["Sodium"] == "CMP"
+    assert p["Glucose"] == "CMP"
+    assert p["WBC"] == "CBC"
+    assert p["Hemoglobin"] == "CBC"
+    assert [h["name"] for h in detect_panel_headers(TWO_PANELS)] == ["CMP", "CBC"]
+
+
+def test_messy_cmp_rows_carry_cmp():
+    rows = parse_lab_lines(MESSY, analytes())
+    assert {r["panel_name"] for r in rows} == {"CMP"}
+
+
+def test_no_header_is_imported_panel_not_first_test():
+    text = "Collected: 2024-05-01\nSodium 140 mmol/L\nPotassium 4.2 mmol/L\n"
+    assert detect_panel_name(text) == "Imported Panel"
+    assert {r["panel_name"] for r in parse_lab_lines(text, analytes())} == {"Imported Panel"}
+
+
+def test_tsh_component_does_not_split_bmp():
+    text = (
+        "BASIC METABOLIC PANEL\n"
+        "Sodium 140 mmol/L (135-145)\n"
+        "TSH 1.8 m[IU]/L (0.4-4.5)\n"
+        "Potassium 4.2 mmol/L (3.5-5.1)\n"
+    )
+    assert [h["name"] for h in detect_panel_headers(text)] == ["BMP"]
+    assert set(panel_of(parse_lab_lines(text, analytes())).values()) == {"BMP"}
+
+
+def test_tsh_title_line_is_a_header():
+    text = "CMP\nSodium 140 mmol/L\nTHYROID PANEL\nTSH 1.8 m[IU]/L\n"
+    assert [h["name"] for h in detect_panel_headers(text)] == ["CMP", "Thyroid"]
+
+
+def test_stacked_component_name_is_not_a_header():
+    text = "HEMOGLOBIN A1C\n5.4\n%\nFINAL\n"
+    assert detect_panel_headers(text) == []
+
+
+def test_orphan_lines_above_first_header_use_default():
+    text = (
+        "Sodium 140 mmol/L\n"
+        "COMPLETE BLOOD COUNT\n"
+        "Hemoglobin 13.5 g/dL\n"
+    )
+    p = panel_of(parse_lab_lines(text, analytes()))
+    assert p["Sodium"] == "Imported Panel"
+    assert p["Hemoglobin"] == "CBC"
+
+
+def test_comment_after_first_panel_does_not_drop_second():
+    text = (
+        "COMPREHENSIVE METABOLIC PANEL\n"
+        "Sodium 140 mmol/L (135-145)\n"
+        "Comments: fasting specimen\n"
+        "Random note text\n"
+        "COMPLETE BLOOD COUNT\n"
+        "Hemoglobin 13.5 g/dL (11.7-15.5)\n"
+    )
+    p = panel_of(parse_lab_lines(text, analytes()))
+    assert p == {"Sodium": "CMP", "Hemoglobin": "CBC"}
+
+
+def test_sentence_mentioning_lipid_panel_is_not_a_header():
+    text = "CMP\nSodium 140 mmol/L\nA lipid panel is recommended annually.\nPotassium 4.2 mmol/L\n"
+    assert [h["name"] for h in detect_panel_headers(text)] == ["CMP"]

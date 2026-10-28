@@ -9,7 +9,7 @@ from .models import (
     Document, Job, JobStatus, Proposal, ProposalStatus, ProposalType,
     LabReport, LabComponent, Encounter, EncounterType, CanonicalAnalyte
 )
-from .extraction import extract_document_text, parse_lab_lines, find_collection_date, detect_panel_name
+from .extraction import extract_document_text, parse_lab_lines, find_collection_date, DEFAULT_PANEL_NAME
 from .ccda import is_clinical_document, parse_sections
 from .lab_matching import match_analyte, is_plain_number, compute_normalized, compute_abnormal_flag
 from .model_client import call_model, llm_autofile_enabled, get_model_mode
@@ -95,12 +95,13 @@ def process_job(db: Session, job_id: int) -> None:
         analytes = db.query(CanonicalAnalyte).all()
         lines = parse_lab_lines(text, analytes)
         coll_date = find_collection_date(text)
-        panel_name = detect_panel_name(text)
 
         auto_filed_any = False
         proposals_created = False
-        auto_lines = []
+        # One report per printed panel, in first-seen order (dicts keep insertion order).
+        auto_by_panel: dict = {}
         for line in lines:
+            panel_name = line.get("panel_name") or DEFAULT_PANEL_NAME
             can_auto = (
                 line["matched"]
                 and line["plain_number"]
@@ -108,7 +109,7 @@ def process_job(db: Session, job_id: int) -> None:
                 and coll_date is not None
             )
             if can_auto:
-                auto_lines.append(line)
+                auto_by_panel.setdefault(panel_name, []).append(line)
             else:
                 payload = {
                     "original_name": line["original_name"],
@@ -132,7 +133,9 @@ def process_job(db: Session, job_id: int) -> None:
                 db.add(prop)
                 proposals_created = True
 
-        if auto_lines and coll_date:
+        if auto_by_panel:
+            # Auto-file needs a collection date. One date per file (the only one we
+            # parse), so one lab encounter holds every panel drawn with it.
             enc = Encounter(
                 profile_id=doc.profile_id,
                 type=EncounterType.lab,
@@ -142,6 +145,7 @@ def process_job(db: Session, job_id: int) -> None:
             )
             db.add(enc)
             db.flush()
+        for panel_name, auto_lines in auto_by_panel.items():
             report = LabReport(
                 profile_id=doc.profile_id,
                 encounter_id=enc.id,

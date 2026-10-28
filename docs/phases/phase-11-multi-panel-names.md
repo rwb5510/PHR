@@ -1,6 +1,6 @@
 # Phase 11 — Multi-panel names on one document
 
-**Status:** 📋 Planned
+**Status:** ✅ Built
 **GitHub Issue:** [#3](https://github.com/rwb5510/PHR/issues/3)
 **Prerequisites:** none (heuristic titles ship even if Phase 12’s catalog is later)
 **Blocks:** none (Phase 14 grouping is nicer when this exists; not a hard blocker)
@@ -143,10 +143,10 @@ Add to `backend/tests/test_lab_parse.py` and a processor test (new `test_phase11
    **Answer:** No. Phase 11 ships with built-in `PANEL_NAMES` / printed titles. Catalog later only adds aliases.
 
 2. What to store when the print says `COMPLETE METABOLIC PANEL` vs `CMP`.
-   **Answer:** *(pending — default: mapped short name from `PANEL_NAMES` / catalog canonical name, e.g. `CMP`)*
+   **Answer:** Default adopted in build — store the mapped short name from `PANEL_NAMES` / catalog canonical name (e.g. `CMP`).
 
 3. Lines above the first header.
-   **Answer:** *(pending — default: `"Imported Panel"` for those orphans, not the first header)*
+   **Answer:** Default adopted in build — orphan lines above the first header get `"Imported Panel"`.
 
 ---
 
@@ -161,11 +161,46 @@ Add to `backend/tests/test_lab_parse.py` and a processor test (new `test_phase11
 
 ## Definition of Done
 
-- [ ] A single document with CMP then CBC (as in the 2026-09-21 example) files two lab reports with those panel names; components sit under the header above them.
-- [ ] Lab report list does not label a named panel as `"Imported Panel"`.
-- [ ] `"Imported Panel"` remains only when no panel header was detected (or for orphan lines, per Design).
-- [ ] Same collection date from one file still uses one lab encounter and multiple reports.
-- [ ] Inbox `lab_line` payloads carry the line’s `panel_name`; Accept appends to that panel’s report, not the first report on the document.
-- [ ] Heuristic titles work without Phase 12.
-- [ ] Tests cover the two-panel fixture, TSH-not-a-header, and the accept-path split; existing BMP/CMP parse tests still pass.
-- [ ] No new LOINC codes; no invented ranges; no hard-delete of filed rows outside the existing reprocess reset.
+- [x] A single document with CMP then CBC (as in the 2026-09-21 example) files two lab reports with those panel names; components sit under the header above them.
+- [x] Lab report list does not label a named panel as `"Imported Panel"`.
+- [x] `"Imported Panel"` remains only when no panel header was detected (or for orphan lines, per Design).
+- [x] Same collection date from one file still uses one lab encounter and multiple reports.
+- [x] Inbox `lab_line` payloads carry the line’s `panel_name`; Accept appends to that panel’s report, not the first report on the document.
+- [x] Heuristic titles work without Phase 12.
+- [x] Tests cover the two-panel fixture, TSH-not-a-header, and the accept-path split; existing BMP/CMP parse tests still pass.
+- [x] No new LOINC codes; no invented ranges; no hard-delete of filed rows outside the existing reprocess reset.
+
+---
+
+## What Shipped *(post-build — add only once Status is ✅ Built)*
+
+`backend/app/extraction.py` gained `detect_panel_headers(text, extra_patterns=None)`, which returns every panel title in document order as `{name, line, quote}`. A title must be title-like: not boilerplate, ≤ 70 chars, ≤ 8 words, not a sentence, no value+unit, and not a stacked-layout component name (a lone name whose next content line is a bare value). Two-line wrapped titles are joined. When several patterns hit one line, the earliest match wins (ties → longer match). Thyroid uses a stricter `THYROID_HEADER_RE` (`thyroid panel/function/profile`, `TSH panel`, or a bare `TSH` line). `extra_patterns` (catalog `(regex, name)` pairs) compete with `PANEL_NAMES` on equal terms, so Phase 12 can plug in without touching the DB from extraction. `detect_panel_name` is now a thin wrapper (`headers[0]` or `"Imported Panel"`).
+
+`parse_lab_lines` cuts the result zone at each header line and parses each segment separately, tagging every row with `panel_name` (most recent header above it; orphans above the first header → `"Imported Panel"`). The existing stacked/INR/line parsers run unchanged per segment.
+
+`processor.py` groups auto-fileable lines by `panel_name` in first-seen order: one lab `Encounter` per document, one `LabReport` per panel on it. Proposal payloads carry each line's own `panel_name`.
+
+`POST /proposals/{id}/accept` now finds the report by `(source_document_id, profile_id, panel_name)`. If none exists, it reuses the encounter of a sibling report on the same document (same collection time, or any report when the payload has no date), else creates one. A CBC line no longer lands on the CMP report.
+
+The review inbox shows `payload.panel_name` as a muted tag on lab lines.
+
+## Deviations from the Original Plan *(post-build)*
+
+- `_result_zone` became `_result_zone_spans`: a `RESULT_END` line (e.g. `Comments:`) used to end the result zone for the whole document, which would silently drop a CBC printed below the CMP's comments. The zone now resumes at the next panel header. Not in the plan; covered by `test_comment_after_first_panel_does_not_drop_second`.
+- Panel assignment cuts the zone into per-header segments before parsing, instead of mapping rows back to line offsets afterwards. This sidesteps the offset-loss risk for Quest stacked blocks.
+- Lines above the first header always get `"Imported Panel"` (the plan's "prefer" option); no delayed-title inheritance.
+- No catalog loading in the processor yet (Phase 12 doesn't exist); `parse_lab_lines` / `detect_panel_headers` accept `extra_patterns` for when it does.
+
+## Verification Performed *(post-build)*
+
+- Locally (Windows venv, per file): `test_lab_parse.py` 26 passed (9 new: two-panel split, MESSY rows all `CMP`, no header → `"Imported Panel"`, TSH component does not split BMP, `THYROID PANEL` title is a header, stacked `HEMOGLOBIN A1C` is not a header, orphan lines, comment between panels, sentence mentioning lipid panel). `test_phase11.py` 6 passed (CMP+CBC PDF → two reports on one encounter, BMP PDF → one `BMP` report, reprocess does not duplicate panels, proposal payload carries line panel, accepting a CBC proposal does not append to CMP and shares the encounter, two accepted lines of one panel share a report). `test_phase3/5/6/7/9/10` pass.
+- `test_phase4.py`: 7 passed, 1 failed — `test_scanned_image_gets_ocr` needs Tesseract, which isn't installed on the dev machine; fails identically on `main`. Not run in the Docker API image.
+- Frontend: `tsc --noEmit` clean.
+- Not done: a manual upload of a real multi-panel PDF in the running stack.
+
+## Deferred / Not Built *(post-build)*
+
+- Catalog (Phase 12) header patterns — hook exists, no caller yet.
+- Grouping the Lab Reports list by collection time (nice-to-have).
+- Per-panel collection dates and performing lab parsing (out of scope).
+- Pre-existing, not changed: `POST /proposals/{id}/accept` doesn't check the proposal's household against the session.

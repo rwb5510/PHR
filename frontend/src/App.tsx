@@ -719,6 +719,7 @@ function Inbox() {
                     <strong>{p.payload?.original_name}</strong>
                     {' '}{p.payload?.value_text} {p.payload?.unit_original || ''}
                     {p.payload?.ref_text ? ` (${p.payload.ref_text})` : ''}
+                    {p.payload?.panel_name && <span className="muted"> · {p.payload.panel_name}</span>}
                     <span className="muted inbox-quote">{p.quote}</span>
                   </span>
                 ) : (

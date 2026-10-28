@@ -377,11 +377,103 @@ def find_collection_date(text: str) -> Optional[datetime]:
     return None
 
 
+DEFAULT_PANEL_NAME = "Imported Panel"
+# TSH/thyroid only counts as a title when it reads like one; a TSH result is a component.
+THYROID_HEADER_RE = re.compile(
+    r"thyroid\s+(panel|function|profile|cascade)|\btsh\s+(panel|profile|cascade)\b|"
+    r"^tsh(\s*(w/|with)?\s*reflex.*)?$",
+    re.I,
+)
+SENTENCE_END_RE = re.compile(r"[.!?]$")
+
+
+def _header_candidates(line: str, patterns) -> List[Tuple[int, int, str]]:
+    hits = []
+    for pat, name in patterns:
+        if name == "Thyroid":
+            m = THYROID_HEADER_RE.search(line)
+        else:
+            m = pat.search(line)
+        if m:
+            hits.append((m.start(), -(m.end() - m.start()), name))
+    return hits
+
+
+def _title_like(line: str) -> bool:
+    """A panel title has no result on it and is not a sentence."""
+    if not line or _is_boilerplate(line) or len(line) > 70:
+        return False
+    if SENTENCE_END_RE.search(line) or len(line.split()) > 8:
+        return False
+    if LAB_UNIT_RE.search(line) and VALUE_RE.search(line):
+        return False
+    if VALUE_LINE_RE.match(line):
+        return False
+    return True
+
+
+def _next_content(lines: List[str], i: int) -> str:
+    for nxt in lines[i + 1:]:
+        if nxt and not LOINC_LINE_RE.match(nxt):
+            return nxt
+    return ""
+
+
+def detect_panel_headers(text: str, extra_patterns=None) -> List[Dict[str, Any]]:
+    """Every panel title in document order, as {name, line, quote}.
+
+    `line` is the index into text.split("\n"). extra_patterns are (regex, name)
+    pairs from a catalog; they compete with the built-ins on equal terms.
+    """
+    patterns = list(extra_patterns or []) + PANEL_NAMES
+    raw = (text or "").replace("\r", "").split("\n")
+    lines = [_collapse(l) for l in raw]
+    headers: List[Dict[str, Any]] = []
+    skip_next = False
+    for i, line in enumerate(lines):
+        if skip_next:
+            skip_next = False
+            continue
+        if not _title_like(line):
+            continue
+        hits = _header_candidates(line, patterns)
+        quote = line
+        if not hits:
+            # Titles wrapped across two rows ("Lipid" / "Panel").
+            j = i + 1
+            if j < len(lines) and _title_like(lines[j]) and len(line.split()) <= 3:
+                joined = f"{line} {lines[j]}"
+                hits = _header_candidates(joined, patterns)
+                if hits:
+                    quote = joined
+                    skip_next = True
+        if not hits:
+            continue
+        # Stacked layouts print a component's name alone, then its value below it.
+        if VALUE_LINE_RE.match(_next_content(lines, i + (1 if skip_next else 0))):
+            skip_next = False
+            continue
+        # Earliest hit on the line wins; ties go to the longer (more specific) match.
+        name = sorted(hits)[0][2]
+        if headers and headers[-1]["name"] == name:
+            continue
+        headers.append({"name": name, "line": i, "quote": quote[:120]})
+    return headers
+
+
 def detect_panel_name(text: str) -> str:
-    for pat, name in PANEL_NAMES:
-        if pat.search(text or ""):
-            return name
-    return "Imported Panel"
+    headers = detect_panel_headers(text)
+    return headers[0]["name"] if headers else DEFAULT_PANEL_NAME
+
+
+def _panel_at(headers: List[Dict[str, Any]], line_no: int) -> str:
+    """Most recent header at or above the line; orphans above the first header get the default."""
+    name = DEFAULT_PANEL_NAME
+    for h in headers:
+        if h["line"] > line_no:
+            break
+        name = h["name"]
+    return name
 
 
 def _collapse(line: str) -> str:
@@ -589,7 +681,12 @@ def parse_result_line(line: str) -> Optional[Dict[str, Any]]:
     return _row_from_unit_match(line, unit_m)
 
 
-def _result_zone(lines: List[str]) -> List[str]:
+def _result_zone_spans(lines: List[str], header_lines: List[int]) -> List[Tuple[int, int]]:
+    """[start, end) line spans holding results.
+
+    A comment block ends a panel's results; the zone picks up again at the
+    next panel title so a CBC printed under the CMP's comments is not lost.
+    """
     start = 0
     saw_header = False
     for i, line in enumerate(lines):
@@ -603,12 +700,23 @@ def _result_zone(lines: List[str]) -> List[str]:
             start = i + 1
             saw_header = True
             break
-    out = []
-    for line in lines[start:]:
-        if saw_header and RESULT_END.match(line.strip()):
-            break
-        out.append(line)
-    return out if out else lines
+    if not saw_header:
+        return [(0, len(lines))]
+    spans: List[Tuple[int, int]] = []
+    i = start
+    while i < len(lines):
+        if not RESULT_END.match(lines[i].strip()):
+            i += 1
+            continue
+        if i > start:
+            spans.append((start, i))
+        nxt = next((h for h in header_lines if h > i), None)
+        if nxt is None:
+            return spans or [(0, len(lines))]
+        start = i = nxt
+    if len(lines) > start:
+        spans.append((start, len(lines)))
+    return spans or [(0, len(lines))]
 
 
 def _should_join_name_line(prev: str, line: str) -> bool:
@@ -789,33 +897,27 @@ def _parse_inr_lines(text: str) -> List[Dict[str, Any]]:
     return out
 
 
-def parse_lab_lines(text: str, analytes: list) -> List[Dict[str, Any]]:
-    """Return lab-result-shaped rows only. Letterhead, phones, comments are dropped."""
-    text = (text or "").replace("\r", "")
-    lines = text.split("\n")
-    zone = _result_zone(lines)
-    parsed: List[Dict[str, Any]] = []
+def _consume(fragment: str, add) -> None:
+    if not fragment.strip():
+        return
+    for unit_m in LAB_UNIT_RE.finditer(fragment):
+        line_start = fragment.rfind("\n", 0, unit_m.start()) + 1
+        line_end = fragment.find("\n", unit_m.end())
+        if line_end < 0:
+            line_end = len(fragment)
+        line = fragment[line_start:line_end]
+        if _is_boilerplate(line) and not VALUE_RE.search(line):
+            continue
+        row = _row_from_unit_match(fragment, unit_m)
+        if row:
+            add(row)
 
+
+def _parse_segment(zone: List[str], add) -> None:
     for row in _parse_stacked_blocks("\n".join(zone)):
-        parsed.append(_annotate(row, analytes))
+        add(row)
     for row in _parse_inr_lines("\n".join(zone)):
-        parsed.append(_annotate(row, analytes))
-
-    def consume(fragment: str) -> None:
-        if not fragment.strip():
-            return
-        for unit_m in LAB_UNIT_RE.finditer(fragment):
-            line_start = fragment.rfind("\n", 0, unit_m.start()) + 1
-            line_end = fragment.find("\n", unit_m.end())
-            if line_end < 0:
-                line_end = len(fragment)
-            line = fragment[line_start:line_end]
-            if _is_boilerplate(line) and not VALUE_RE.search(line):
-                continue
-            row = _row_from_unit_match(fragment, unit_m)
-            if row:
-                parsed.append(_annotate(row, analytes))
-
+        add(row)
     for i, line in enumerate(zone):
         if not line.strip():
             continue
@@ -825,10 +927,36 @@ def parse_lab_lines(text: str, analytes: list) -> List[Dict[str, Any]]:
             fragment = prev.strip() + "  " + line
         if _is_boilerplate(line) and not (VALUE_RE.search(line) and LAB_UNIT_RE.search(line)):
             continue
-        consume(fragment)
+        _consume(fragment, add)
+
+
+def parse_lab_lines(text: str, analytes: list, extra_patterns=None) -> List[Dict[str, Any]]:
+    """Return lab-result-shaped rows only. Letterhead, phones, comments are dropped.
+
+    Each row carries `panel_name`: the panel title printed most recently above it.
+    """
+    text = (text or "").replace("\r", "")
+    lines = text.split("\n")
+    headers = detect_panel_headers(text, extra_patterns)
+    header_lines = [h["line"] for h in headers]
+    spans = _result_zone_spans(lines, header_lines)
+    parsed: List[Dict[str, Any]] = []
+
+    def adder(panel_name: str):
+        def add(row: Dict[str, Any]) -> None:
+            row["panel_name"] = panel_name
+            parsed.append(_annotate(row, analytes))
+        return add
+
+    # Cut each span at every panel title so a row knows which panel it sits under.
+    for start, end in spans:
+        cuts = sorted({start, end} | {h for h in header_lines if start < h < end})
+        for a, b in zip(cuts, cuts[1:]):
+            _parse_segment(lines[a:b], adder(_panel_at(headers, a)))
 
     # One-blob PDFs only. Walking a whole Quest page treats comment sentences as results.
+    zone = [l for start, end in spans for l in lines[start:end]]
     if not parsed and zone and sum(1 for l in zone if l.strip()) <= 3:
-        consume("\n".join(zone))
+        _consume("\n".join(zone), adder(_panel_at(headers, spans[0][0])))
 
     return _dedupe(parsed)
