@@ -30,6 +30,7 @@ from .schemas import (
 from .lab_matching import (
     match_analyte, compute_normalized, compute_abnormal_flag, is_plain_number
 )
+from .lab_matrix import build_lab_matrix, original_name_trend
 from .seed import load_analytes
 from .extraction import MAX_UPLOAD_BYTES
 from .processor import process_job, reset_document_outputs
@@ -260,6 +261,18 @@ def get_lab_report(report_id: int, db: Session = Depends(get_db)):
 @app.get("/profiles/{profile_id}/lab-reports", response_model=List[LabReportOut])
 def list_lab_reports(profile_id: int, db: Session = Depends(get_db)):
     return db.query(LabReport).filter(LabReport.profile_id == profile_id).all()
+
+@app.get("/profiles/{profile_id}/lab-matrix")
+def lab_matrix(profile_id: int, request: Request, db: Session = Depends(get_db)):
+    hid = session_household_id(request, db)
+    profile_in_household(db, profile_id, hid)
+    return build_lab_matrix(db, profile_id)
+
+@app.get("/profiles/{profile_id}/trends/original/{name:path}")
+def unmatched_analyte_trend(profile_id: int, name: str, request: Request, db: Session = Depends(get_db)):
+    hid = session_household_id(request, db)
+    profile_in_household(db, profile_id, hid)
+    return original_name_trend(db, profile_id, name)
 
 @app.get("/profiles/{profile_id}/trends/{analyte_name}")
 def analyte_trend(profile_id: int, analyte_name: str, db: Session = Depends(get_db)):

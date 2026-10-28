@@ -140,7 +140,6 @@ function ProfileNav() {
         <Link to={`/profile/${id}/problems`}>Problems</Link>
         <Link to={`/profile/${id}/allergies`}>Allergies</Link>
         <Link to={`/profile/${id}/labs`}>Lab reports</Link>
-        <Link to={`/profile/${id}/trends/Sodium`}>Sodium trend</Link>
         <Link to={`/profile/${id}/imaging`}>Imaging</Link>
         <Link to={`/profile/${id}/documents`}>Documents</Link>
         <Link to={`/profile/${id}/inbox`}>Review inbox {inbox > 0 && <span className="badge">{inbox}</span>}</Link>
@@ -180,7 +179,18 @@ function Dashboard() {
         <h3>Recent encounters</h3>
         <ul>{d.recent_encounters.map((e: any) => <li key={e.id}><Link to={`/encounter/${e.id}`}>{e.type} — {e.start} — {e.reason || ''}</Link></li>)}</ul>
         <h3>Flagged labs (L/H)</h3>
-        <ul>{d.flagged_labs.map((c: any, i: number) => <li key={i}><Link to={`/profile/${id}/trends/${c.analyte || 'Sodium'}`}>{c.original_name}: {c.value_text} {c.unit || ''} ({c.flag}) {c.ref_low != null ? `${c.ref_low}–${c.ref_high}` : ''}</Link></li>)}</ul>
+        <ul>{d.flagged_labs.map((c: any, i: number) => {
+          const href = c.analyte
+            ? `/profile/${id}/trends/${encodeURIComponent(c.analyte)}`
+            : c.original_name
+              ? `/profile/${id}/trends/original/${encodeURIComponent(c.original_name)}`
+              : `/profile/${id}/labs`
+          return (
+            <li key={i}>
+              <Link to={href}>{c.original_name}: {c.value_text} {c.unit || ''} ({c.flag}) {c.ref_low != null ? `${c.ref_low}–${c.ref_high}` : ''}</Link>
+            </li>
+          )
+        })}</ul>
         <h3>Recent imaging</h3>
         {Object.entries(d.imaging_by_modality || {}).map(([mod, reports]: any) => (
           <div key={mod}>
@@ -299,20 +309,94 @@ function EncounterDetail() {
   )
 }
 
+function matrixRowHref(profileId: string | undefined, row: any) {
+  if (row.kind === 'unmatched') {
+    const name = typeof row.key === 'string' && row.key.startsWith('original:')
+      ? row.key.slice('original:'.length)
+      : row.display_name
+    return `/profile/${profileId}/trends/original/${encodeURIComponent(name)}`
+  }
+  return `/profile/${profileId}/trends/${encodeURIComponent(row.display_name)}`
+}
+
+function matrixCellClass(flag: string) {
+  if (flag === 'L' || flag === 'H') return 'matrix-flag-lh'
+  if (flag === 'N') return 'matrix-flag-n'
+  return ''
+}
+
+function matrixCellLabel(cell: any) {
+  const unit = cell.unit_original ? ` ${cell.unit_original}` : ''
+  const extra = cell.also?.length ? ` +${cell.also.length}` : ''
+  return `${cell.value_text}${unit}${extra}`
+}
+
+function matrixCellTitle(cell: any) {
+  const range = cell.ref_text ? `Range: ${cell.ref_text}` : ''
+  const others = (cell.also || []).map((item: any) => `${item.panel_name}: ${item.value_text}`).join('; ')
+  return [cell.panel_name, range, others].filter(Boolean).join(' · ')
+}
+
 function LabReports() {
   const { id } = useParams()
   const [reports, setReports] = useState<any[]>([])
+  const [matrix, setMatrix] = useState<{ dates: string[]; rows: any[] }>({ dates: [], rows: [] })
   useEffect(() => {
     apiJson<any[]>(`/profiles/${id}/lab-reports`).then(setReports).catch(() => setReports([]))
+    apiJson<{ dates: string[]; rows: any[] }>(`/profiles/${id}/lab-matrix`)
+      .then(setMatrix)
+      .catch(() => setMatrix({ dates: [], rows: [] }))
   }, [id])
+  const empty = !matrix.dates.length && !matrix.rows.length
   return (
-    <div className="card">
-      <h2>Lab Reports</h2>
-      <ul>
-        {reports.map(r => (
-          <li key={r.id}><Link to={`/lab-report/${r.id}`}>{r.panel_name} — {r.collection_time}</Link></li>
-        ))}
-      </ul>
+    <div className="card labs-wide">
+      <h2>Lab reports</h2>
+      <h3>Results over time</h3>
+      {empty ? (
+        <p>No lab results yet. Upload a report or enter one.</p>
+      ) : (
+        <div className="matrix-scroll">
+          <table className="lab-matrix">
+            <thead>
+              <tr>
+                <th>Component</th>
+                {matrix.dates.map(d => <th key={d}>{d}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {matrix.rows.map(row => (
+                <tr key={row.key}>
+                  <th scope="row">
+                    <Link to={matrixRowHref(id, row)}>{row.display_name}</Link>
+                  </th>
+                  {matrix.dates.map(d => {
+                    const cell = row.cells?.[d]
+                    return (
+                      <td key={d} className={cell ? matrixCellClass(cell.abnormal_flag) : ''}>
+                        {cell ? (
+                          <Link to={`/lab-report/${cell.report_id}`} title={matrixCellTitle(cell)}>
+                            {matrixCellLabel(cell)}
+                          </Link>
+                        ) : null}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <h3>Reports</h3>
+      {reports.length === 0 ? (
+        <p className="muted">No individual reports.</p>
+      ) : (
+        <ul>
+          {reports.map(r => (
+            <li key={r.id}><Link to={`/lab-report/${r.id}`}>{r.panel_name} — {r.collection_time}</Link></li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -352,11 +436,17 @@ function LabReportView() {
 }
 
 function TrendView() {
-  const { id, analyte } = useParams()
+  const { id, analyte, name } = useParams()
+  const unmatched = Boolean(name)
+  const series = unmatched ? name : analyte
   const [data, setData] = useState<any>(null)
   useEffect(() => {
-    apiJson(`/profiles/${id}/trends/${analyte}`).then(setData).catch(() => setData({ points: [], analyte }))
-  }, [id, analyte])
+    if (!series) return
+    const path = unmatched
+      ? `/profiles/${id}/trends/original/${encodeURIComponent(series)}`
+      : `/profiles/${id}/trends/${encodeURIComponent(series)}`
+    apiJson(path).then(setData).catch(() => setData({ points: [], analyte: series }))
+  }, [id, series, unmatched])
   if (!data) return <div>Loading…</div>
   const byUnit: Record<string, any[]> = {}
   data.points.forEach((pt: any) => {
@@ -366,7 +456,7 @@ function TrendView() {
   })
   return (
     <div className="card">
-      <h2>{data.analyte} Trend</h2>
+      <h2>{data.analyte || series} Trend</h2>
       {Object.entries(byUnit).map(([unit, pts]) => (
         <div key={unit}>
           <h3>{unit} series ({pts.length} points)</h3>
@@ -380,7 +470,9 @@ function TrendView() {
           </ul>
         </div>
       ))}
-      {data.points.length === 0 && <p>No matched points. Upload the synthetic CCD and accept the sodium proposal.</p>}
+      {data.points.length === 0 && (
+        <p>{unmatched ? 'No results for this name yet.' : 'No matched points. Upload the synthetic CCD and accept the sodium proposal.'}</p>
+      )}
     </div>
   )
 }
@@ -977,6 +1069,7 @@ function ProfileLayout() {
           />
         } />
         <Route path="labs" element={<LabReports />} />
+        <Route path="trends/original/:name" element={<TrendView />} />
         <Route path="trends/:analyte" element={<TrendView />} />
         <Route path="imaging" element={<ImagingLibrary />} />
         <Route path="documents" element={<Documents />} />
